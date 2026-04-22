@@ -55,8 +55,16 @@ export default function Index() {
     if (!user) return;
     if (!responsable.trim()) return toast.error("Ingresá el nombre del responsable");
     setBusy(sector.id);
+    // Re-confirm the active session right before insert to avoid RLS race conditions
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      setBusy(null);
+      toast.error("Sesión expirada. Volvé a iniciar sesión.");
+      navigate("/auth");
+      return;
+    }
     if (responsable !== nombre) {
-      await supabase.from("profiles").update({ nombre: responsable }).eq("id", user.id);
+      await supabase.from("profiles").update({ nombre: responsable }).eq("id", authUser.id);
       setNombre(responsable);
     }
     const existente = inspBySector.get(sector.id);
@@ -66,7 +74,7 @@ export default function Index() {
       return;
     }
     const { data, error } = await supabase.from("inspecciones").insert({
-      user_id: user.id, responsable, sector_id: sector.id, mes, anio,
+      user_id: authUser.id, responsable, sector_id: sector.id, mes, anio,
     }).select("id").single();
     setBusy(null);
     if (error) return toast.error(error.message);
