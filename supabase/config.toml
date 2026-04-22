@@ -1,0 +1,3 @@
+project_id = "ouypyswuqmchoohxssij"
+[functions.comparar-foto]
+verify_jwt = true
