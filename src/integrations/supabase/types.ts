@@ -14,7 +14,202 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      detalles_inspeccion: {
+        Row: {
+          created_at: string
+          foto_evidencia_url: string | null
+          ia_comentario: string | null
+          ia_sugerido_puntaje: number | null
+          id: string
+          inspeccion_id: string
+          observaciones: string | null
+          promedio: number | null
+          s1_puntaje: number | null
+          s2_puntaje: number | null
+          s3_puntaje: number | null
+          s4_puntaje: number | null
+          s5_puntaje: number | null
+          sub_item_id: string
+          sub_item_nombre: string
+        }
+        Insert: {
+          created_at?: string
+          foto_evidencia_url?: string | null
+          ia_comentario?: string | null
+          ia_sugerido_puntaje?: number | null
+          id?: string
+          inspeccion_id: string
+          observaciones?: string | null
+          promedio?: number | null
+          s1_puntaje?: number | null
+          s2_puntaje?: number | null
+          s3_puntaje?: number | null
+          s4_puntaje?: number | null
+          s5_puntaje?: number | null
+          sub_item_id: string
+          sub_item_nombre: string
+        }
+        Update: {
+          created_at?: string
+          foto_evidencia_url?: string | null
+          ia_comentario?: string | null
+          ia_sugerido_puntaje?: number | null
+          id?: string
+          inspeccion_id?: string
+          observaciones?: string | null
+          promedio?: number | null
+          s1_puntaje?: number | null
+          s2_puntaje?: number | null
+          s3_puntaje?: number | null
+          s4_puntaje?: number | null
+          s5_puntaje?: number | null
+          sub_item_id?: string
+          sub_item_nombre?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "detalles_inspeccion_inspeccion_id_fkey"
+            columns: ["inspeccion_id"]
+            isOneToOne: false
+            referencedRelation: "inspecciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "detalles_inspeccion_sub_item_id_fkey"
+            columns: ["sub_item_id"]
+            isOneToOne: false
+            referencedRelation: "sub_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspecciones: {
+        Row: {
+          anio: number
+          created_at: string
+          estado: Database["public"]["Enums"]["inspeccion_estado"]
+          finalizada_at: string | null
+          id: string
+          mes: number
+          puntaje_total: number | null
+          responsable: string
+          sector_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anio: number
+          created_at?: string
+          estado?: Database["public"]["Enums"]["inspeccion_estado"]
+          finalizada_at?: string | null
+          id?: string
+          mes: number
+          puntaje_total?: number | null
+          responsable: string
+          sector_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anio?: number
+          created_at?: string
+          estado?: Database["public"]["Enums"]["inspeccion_estado"]
+          finalizada_at?: string | null
+          id?: string
+          mes?: number
+          puntaje_total?: number | null
+          responsable?: string
+          sector_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspecciones_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          nombre: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          nombre: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
+      sectores: {
+        Row: {
+          created_at: string
+          emoji: string | null
+          id: string
+          nombre: string
+          orden: number
+        }
+        Insert: {
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          nombre: string
+          orden?: number
+        }
+        Update: {
+          created_at?: string
+          emoji?: string | null
+          id?: string
+          nombre?: string
+          orden?: number
+        }
+        Relationships: []
+      }
+      sub_items: {
+        Row: {
+          created_at: string
+          foto_maestra_url: string | null
+          id: string
+          nombre: string
+          orden: number
+          sector_id: string
+        }
+        Insert: {
+          created_at?: string
+          foto_maestra_url?: string | null
+          id?: string
+          nombre: string
+          orden?: number
+          sector_id: string
+        }
+        Update: {
+          created_at?: string
+          foto_maestra_url?: string | null
+          id?: string
+          nombre?: string
+          orden?: number
+          sector_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_items_sector_id_fkey"
+            columns: ["sector_id"]
+            isOneToOne: false
+            referencedRelation: "sectores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +218,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      inspeccion_estado: "borrador" | "finalizada"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +345,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      inspeccion_estado: ["borrador", "finalizada"],
+    },
   },
 } as const
