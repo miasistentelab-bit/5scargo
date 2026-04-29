@@ -55,9 +55,9 @@ export default function Auth() {
             <ClipboardCheck className="h-8 w-8 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            sistema de verificacion 5S 
+            sistema de verificacion 5S
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Verificacíon mensual</p>
+          <p className="text-sm text-muted-foreground mt-1">Verificación mensual</p>
         </div>
 
         <Card className="p-6 shadow-elevated bg-gradient-surface border-border/50">
