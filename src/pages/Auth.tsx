@@ -86,7 +86,7 @@ export default function Auth() {
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
                 <div>
-                  <Label>Nombre del responsable</Label>
+                  <Label>Nombre del inspector</Label>
                   <Input required value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Juan Pérez" />
                 </div>
                 <div>
@@ -104,6 +104,12 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
         </Card>
+
+        <div className="mt-4">
+          <Button type="button" variant="outline" className="w-full" onClick={() => navigate("/resultados")}>
+            Ver resultados (sin iniciar sesión)
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -8,37 +8,123 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Lock, ShieldCheck, AlertTriangle } from "lucide-react";
 import { meses, promedio as calcPromedio } from "@/lib/scoring";
 import { ProgressBar } from "@/components/inspeccion/ProgressBar";
-import { SubItemCard, type DetalleData } from "@/components/inspeccion/SubItemCard";
+import { SubItemCard, type DetalleData, type MaestraFoto, type EvidenciaFoto } from "@/components/inspeccion/SubItemCard";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+
+type InspeccionEstado = "borrador" | "finalizada";
+type InspeccionRow = {
+  id: string;
+  user_id: string;
+  responsable: string;
+  sector_id: string;
+  mes: number;
+  anio: number;
+  estado: InspeccionEstado;
+  puntaje_total: number | null;
+  finalizada_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type Sector = { id: string; nombre: string; emoji: string; orden: number };
+type SubItem = { id: string; sector_id: string; nombre: string; foto_maestra_url: string | null; orden: number; created_at: string };
+type MaestraRow = { id: string; sub_item_id: string; url: string; storage_path: string | null; created_at: string };
+type EvidenciaRow = { id: string; sub_item_id: string; url: string; storage_path: string; created_at: string };
 
 export default function Inspeccion() {
   const { id } = useParams();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [insp, setInsp] = useState<any>(null);
-  const [sector, setSector] = useState<any>(null);
-  const [subItems, setSubItems] = useState<any[]>([]);
+  const [insp, setInsp] = useState<InspeccionRow | null>(null);
+  const [sector, setSector] = useState<Sector | null>(null);
+  const [subItems, setSubItems] = useState<SubItem[]>([]);
   const [detalles, setDetalles] = useState<DetalleData[]>([]);
+  const [maestrasBySub, setMaestrasBySub] = useState<Record<string, MaestraFoto[]>>({});
+  const [evidenciasBySub, setEvidenciasBySub] = useState<Record<string, EvidenciaFoto[]>>({});
   const [finalizando, setFinalizando] = useState(false);
 
   useEffect(() => { if (!loading && !user) navigate("/auth"); }, [user, loading, navigate]);
+
+  const extractStoragePath = (url: string) => {
+    try {
+      const u = new URL(url);
+      const prefixes = ["/storage/v1/object/sign/evidencias/", "/storage/v1/object/public/evidencias/"];
+      const match = prefixes.map((p) => ({ p, idx: u.pathname.indexOf(p) })).find((x) => x.idx !== -1);
+      if (!match) return null;
+      return decodeURIComponent(u.pathname.slice(match.idx + match.p.length));
+    } catch {
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (!id || !user) return;
     (async () => {
       const { data: i } = await supabase.from("inspecciones").select("*").eq("id", id).maybeSingle();
       if (!i) { toast.error("Inspección no encontrada"); navigate("/"); return; }
-      setInsp(i);
-      const { data: s } = await supabase.from("sectores").select("*").eq("id", i.sector_id).maybeSingle();
-      setSector(s);
-      const { data: subs } = await supabase.from("sub_items").select("*").eq("sector_id", i.sector_id).order("orden");
-      setSubItems(subs ?? []);
+      const inspRow = i as unknown as InspeccionRow;
+      setInsp(inspRow);
+      const { data: s } = await supabase.from("sectores").select("*").eq("id", inspRow.sector_id).maybeSingle();
+      setSector((s ?? null) as unknown as Sector | null);
+      const { data: subs } = await supabase.from("sub_items").select("*").eq("sector_id", inspRow.sector_id).order("orden");
+      const subsTyped = (subs ?? []) as unknown as SubItem[];
+      setSubItems(subsTyped);
+      const subIds = subsTyped.map((x) => x.id);
+      if (subIds.length) {
+        const { data: maestras } = await supabase
+          .from("sub_item_maestras")
+          .select("id, sub_item_id, url, storage_path, created_at")
+          .in("sub_item_id", subIds)
+          .order("created_at", { ascending: true });
+        const by: Record<string, MaestraFoto[]> = {};
+        ((maestras ?? []) as unknown as MaestraRow[]).forEach((m) => {
+          (by[m.sub_item_id] = by[m.sub_item_id] ?? []).push({
+            id: m.id,
+            url: m.url,
+            storage_path: m.storage_path,
+            source: "table",
+          });
+        });
+        subsTyped.forEach((sub) => {
+          const current = by[sub.id] ?? [];
+          if (sub.foto_maestra_url) {
+            const legacy: MaestraFoto = {
+              id: `legacy:${sub.id}`,
+              url: sub.foto_maestra_url,
+              storage_path: extractStoragePath(sub.foto_maestra_url),
+              source: "legacy",
+            };
+            by[sub.id] = [legacy, ...current].slice(0, 4);
+          } else {
+            by[sub.id] = current.slice(0, 4);
+          }
+        });
+        setMaestrasBySub(by);
+      } else {
+        setMaestrasBySub({});
+      }
+
+      const { data: evs } = await supabase
+        .from("evidencias_inspeccion")
+        .select("id, sub_item_id, url, storage_path, created_at")
+        .eq("inspeccion_id", id)
+        .order("created_at", { ascending: true });
+      const evBy: Record<string, EvidenciaFoto[]> = {};
+      ((evs ?? []) as unknown as EvidenciaRow[]).forEach((e) => {
+        (evBy[e.sub_item_id] = evBy[e.sub_item_id] ?? []).push({
+          id: e.id,
+          url: e.url,
+          storage_path: e.storage_path,
+        });
+      });
+      setEvidenciasBySub(evBy);
+
       const { data: ds } = await supabase.from("detalles_inspeccion").select("*").eq("inspeccion_id", id);
-      const map = new Map((ds ?? []).map((d: any) => [d.sub_item_id, d]));
-      const merged: DetalleData[] = (subs ?? []).map((sub: any) => {
+      const map = new Map<string, DetalleData>(((ds ?? []) as unknown as DetalleData[]).map((d) => [d.sub_item_id, d]));
+      const merged: DetalleData[] = subsTyped.map((sub) => {
         const ex = map.get(sub.id);
-        return ex ? (ex as any) : {
+        return ex ? ex : {
           sub_item_id: sub.id, sub_item_nombre: sub.nombre,
           s1_puntaje: null, s2_puntaje: null, s3_puntaje: null, s4_puntaje: null, s5_puntaje: null,
           promedio: 0, foto_evidencia_url: null, observaciones: null, ia_sugerido_puntaje: null, ia_comentario: null,
@@ -48,11 +134,13 @@ export default function Inspeccion() {
     })();
   }, [id, user, navigate]);
 
-  const fotoMaestraBySubItem = useMemo(() => {
-    const m = new Map<string, string | null>();
-    subItems.forEach((s) => m.set(s.id, s.foto_maestra_url ?? null));
-    return m;
-  }, [subItems]);
+  const maestrasFor = useMemo(() => {
+    return (subItemId: string) => maestrasBySub[subItemId] ?? [];
+  }, [maestrasBySub]);
+
+  const evidenciasFor = useMemo(() => {
+    return (subItemId: string) => evidenciasBySub[subItemId] ?? [];
+  }, [evidenciasBySub]);
 
   const total = calcPromedio(detalles);
   const completos = detalles.filter((d) =>
@@ -62,6 +150,14 @@ export default function Inspeccion() {
 
   const updateDetalle = (next: DetalleData) => {
     setDetalles((prev) => prev.map((d) => d.sub_item_id === next.sub_item_id ? next : d));
+  };
+
+  const updateMaestras = (subItemId: string, fotos: MaestraFoto[]) => {
+    setMaestrasBySub((prev) => ({ ...prev, [subItemId]: fotos }));
+  };
+
+  const updateEvidencias = (subItemId: string, fotos: EvidenciaFoto[]) => {
+    setEvidenciasBySub((prev) => ({ ...prev, [subItemId]: fotos }));
   };
 
   const finalizar = async () => {
@@ -114,10 +210,13 @@ export default function Inspeccion() {
         {detalles.map((d) => (
           <SubItemCard key={d.sub_item_id}
             detalle={d}
-            fotoMaestraUrl={fotoMaestraBySubItem.get(d.sub_item_id) ?? null}
+            fotosMaestras={maestrasFor(d.sub_item_id)}
+            fotosEvidencia={evidenciasFor(d.sub_item_id)}
             inspeccionId={insp.id}
             userId={user!.id}
             bloqueada={bloqueada}
+            onMaestrasChange={updateMaestras}
+            onEvidenciasChange={updateEvidencias}
             onChange={updateDetalle} />
         ))}
         {!detalles.length && (

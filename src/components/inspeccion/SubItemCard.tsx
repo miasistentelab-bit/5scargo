@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Camera, Sparkles, ChevronDown, ChevronUp, Lock, Check } from "lucide-react";
+import { Loader2, Camera, Sparkles, ChevronDown, ChevronUp, Check, Trash2 } from "lucide-react";
 import { CINCO_S, NIVELES, semaforo } from "@/lib/scoring";
 import { ProgressBar } from "./ProgressBar";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,20 +24,37 @@ export type DetalleData = {
   ia_comentario: string | null;
 };
 
+export type MaestraFoto = {
+  id: string;
+  url: string;
+  storage_path: string | null;
+  source: "table" | "legacy";
+};
+
+export type EvidenciaFoto = {
+  id: string;
+  url: string;
+  storage_path: string;
+};
+
 type Props = {
   detalle: DetalleData;
-  fotoMaestraUrl: string | null;
+  fotosMaestras: MaestraFoto[];
+  fotosEvidencia: EvidenciaFoto[];
   inspeccionId: string;
   userId: string;
   bloqueada: boolean;
   onChange: (d: DetalleData) => void;
+  onMaestrasChange?: (subItemId: string, fotos: MaestraFoto[]) => void;
+  onEvidenciasChange?: (subItemId: string, fotos: EvidenciaFoto[]) => void;
 };
 
-export function SubItemCard({ detalle, fotoMaestraUrl, inspeccionId, userId, bloqueada, onChange }: Props) {
+export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccionId, userId, bloqueada, onChange, onMaestrasChange, onEvidenciasChange }: Props) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [analizando, setAnalizando] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deletingEvidenciaId, setDeletingEvidenciaId] = useState<string | null>(null);
 
   const promedio = (() => {
     const vals = CINCO_S.map((s) => detalle[s.key]).filter((v) => v != null) as number[];
@@ -84,44 +101,224 @@ export function SubItemCard({ detalle, fotoMaestraUrl, inspeccionId, userId, blo
     if (error) { setUploading(false); toast.error(error.message); return null; }
     const { data: signed } = await supabase.storage.from("evidencias").createSignedUrl(path, 60 * 60 * 24 * 365);
     setUploading(false);
-    return signed?.signedUrl ?? null;
+    const url = signed?.signedUrl ?? null;
+    if (!url) return null;
+    return { url, storage_path: path };
   };
 
-  const handleFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    const url = await subirFoto(f);
-    if (!url) return;
-    const next = { ...detalle, foto_evidencia_url: url };
-    onChange(next);
-    await persistir(next);
+  const handleFotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    if (fotosEvidencia.length >= 4) return toast.error("Máximo 4 fotos antes de pedir sugerencia");
+    const remaining = 4 - fotosEvidencia.length;
+    const slice = files.slice(0, remaining);
+    let nextFotos = [...fotosEvidencia];
+    for (const f of slice) {
+      const up = await subirFoto(f);
+      if (!up) continue;
+      const { data: saved, error } = await supabase.from("evidencias_inspeccion")
+        .insert({ inspeccion_id: inspeccionId, sub_item_id: detalle.sub_item_id, storage_path: up.storage_path, url: up.url })
+        .select("id, url, storage_path")
+        .single();
+      if (error) {
+        await supabase.storage.from("evidencias").remove([up.storage_path]);
+        toast.error(error.message);
+        continue;
+      }
+      const savedFoto: EvidenciaFoto = { id: saved!.id, url: saved!.url, storage_path: saved!.storage_path };
+      nextFotos = [...nextFotos, savedFoto];
+      onEvidenciasChange?.(detalle.sub_item_id, nextFotos);
+    }
+    const firstUrl = nextFotos[0]?.url ?? null;
+    const nextDetalle: DetalleData = {
+      ...detalle,
+      foto_evidencia_url: firstUrl,
+      ia_sugerido_puntaje: null,
+      ia_comentario: null,
+    };
+    onChange(nextDetalle);
+    await persistir(nextDetalle);
+  };
+
+  const eliminarEvidencia = async (foto: EvidenciaFoto) => {
+    setDeletingEvidenciaId(foto.id);
+    const { error } = await supabase.from("evidencias_inspeccion").delete().eq("id", foto.id);
+    if (error) { setDeletingEvidenciaId(null); return toast.error(error.message); }
+    await supabase.storage.from("evidencias").remove([foto.storage_path]);
+    const nextFotos = fotosEvidencia.filter((f) => f.id !== foto.id);
+    onEvidenciasChange?.(detalle.sub_item_id, nextFotos);
+    const firstUrl = nextFotos[0]?.url ?? null;
+    const nextDetalle: DetalleData = {
+      ...detalle,
+      foto_evidencia_url: firstUrl,
+      ia_sugerido_puntaje: null,
+      ia_comentario: null,
+    };
+    onChange(nextDetalle);
+    await persistir(nextDetalle);
+    setDeletingEvidenciaId(null);
   };
 
   const analizarConIA = async () => {
-    if (!detalle.foto_evidencia_url) return toast.error("Subí primero una foto de evidencia");
+    if (!fotosEvidencia.length) return toast.error("Subí hasta 4 fotos de evidencia antes de pedir sugerencia");
+    const maestras = fotosMaestras.map((m) => m.url).filter(Boolean).slice(0, 4);
+    if (!maestras.length) return toast.error("No hay fotos originales en Config para comparar");
     setAnalizando(true);
-    const { data, error } = await supabase.functions.invoke("comparar-foto", {
-      body: {
-        fotoActualUrl: detalle.foto_evidencia_url,
-        fotoMaestraUrl,
-        subItemNombre: detalle.sub_item_nombre,
-      },
-    });
-    setAnalizando(false);
-    if (error) return toast.error(error.message);
-    if ((data as any)?.error) return toast.error((data as any).error);
-    const next: DetalleData = {
-      ...detalle,
-      s1_puntaje: (data as any).s1_seiri,
-      s2_puntaje: (data as any).s2_seiton,
-      s3_puntaje: (data as any).s3_seiso,
-      s4_puntaje: (data as any).s4_seiketsu,
-      s5_puntaje: (data as any).s5_shitsuke,
-      ia_sugerido_puntaje: (data as any).puntaje,
-      ia_comentario: (data as any).comentario,
+    const evidencias = fotosEvidencia.map((f) => f.url).filter(Boolean).slice(0, 4);
+
+    const toFeatures = async (url: string) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`No se pudo descargar imagen (${r.status})`);
+      const blob = await r.blob();
+      const bmp = await createImageBitmap(blob);
+      const size = 96;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas no disponible");
+      ctx.drawImage(bmp, 0, 0, size, size);
+      const data = ctx.getImageData(0, 0, size, size).data;
+      const gray = new Float32Array(size * size);
+      for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+        gray[p] = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      }
+      let mean = 0;
+      for (let i = 0; i < gray.length; i++) mean += gray[i];
+      mean /= gray.length;
+      let variance = 0;
+      for (let i = 0; i < gray.length; i++) {
+        const d = gray[i] - mean;
+        variance += d * d;
+      }
+      variance /= gray.length;
+      let edgeCount = 0;
+      let gradSum = 0;
+      const bins = new Float32Array(4);
+      const w = size;
+      const h = size;
+      const edgeThresh = 18;
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x;
+          const dx = gray[idx + 1] - gray[idx - 1];
+          const dy = gray[idx + w] - gray[idx - w];
+          const mag = Math.hypot(dx, dy);
+          gradSum += mag;
+          if (mag >= edgeThresh) edgeCount += 1;
+          const ax = Math.abs(dx);
+          const ay = Math.abs(dy);
+          let bin = 3;
+          if (ay < ax * 0.5) bin = 0;
+          else if (ax < ay * 0.5) bin = 2;
+          else bin = 1;
+          bins[bin] += mag;
+        }
+      }
+      let binSum = 0;
+      for (let i = 0; i < bins.length; i++) binSum += bins[i];
+      if (binSum > 0) for (let i = 0; i < bins.length; i++) bins[i] /= binSum;
+      const edgeDensity = edgeCount / (w * h);
+      const noise = gradSum / (w * h);
+      return { gray, mean, variance, edgeDensity, bins, noise };
     };
-    onChange(next);
-    toast.success("IA sugirió puntajes — revisalos y guardá");
+
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    const cosine = (a: Float32Array, b: Float32Array) => {
+      const n = Math.min(a.length, b.length);
+      let dot = 0;
+      let na = 0;
+      let nb = 0;
+      for (let i = 0; i < n; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+      }
+      if (!na || !nb) return 0;
+      return dot / Math.sqrt(na * nb);
+    };
+
+    const ssimApprox = (a: { gray: Float32Array; mean: number; variance: number }, b: { gray: Float32Array; mean: number; variance: number }) => {
+      const n = Math.min(a.gray.length, b.gray.length);
+      const muX = a.mean;
+      const muY = b.mean;
+      const varX = a.variance;
+      const varY = b.variance;
+      let cov = 0;
+      for (let i = 0; i < n; i++) cov += (a.gray[i] - muX) * (b.gray[i] - muY);
+      cov /= n;
+      const c1 = (0.01 * 255) * (0.01 * 255);
+      const c2 = (0.03 * 255) * (0.03 * 255);
+      const num = (2 * muX * muY + c1) * (2 * cov + c2);
+      const den = (muX * muX + muY * muY + c1) * (varX + varY + c2);
+      if (!den) return 0;
+      return clamp01(num / den);
+    };
+
+    const levelFromScore = (score: number) => {
+      if (score < 13) return 0;
+      if (score < 50) return 25;
+      if (score < 88) return 75;
+      return 100;
+    };
+
+    try {
+      const maestrasFeat = await Promise.all(maestras.map(toFeatures));
+      const dims = { seiri: 0, seiton: 0, seiso: 0, seiketsu: 0, count: 0, overall: 0 };
+      for (const u of evidencias) {
+        const ev = await toFeatures(u);
+        let best = { sim: 0, ssim: 0, edgeSim: 0, orientSim: 0, brightSim: 0, noiseSim: 0 };
+        for (const m of maestrasFeat) {
+          const ssim = ssimApprox(ev, m);
+          const orientSim = clamp01(cosine(ev.bins, m.bins));
+          const edgeSim = clamp01(1 - Math.abs(ev.edgeDensity - m.edgeDensity) / Math.max(0.12, m.edgeDensity));
+          const brightSim = clamp01(1 - Math.abs(ev.mean - m.mean) / 128);
+          const noiseSim = clamp01(1 - Math.max(0, ev.noise - m.noise) / 30);
+          const sim = clamp01(0.55 * ssim + 0.15 * edgeSim + 0.15 * orientSim + 0.10 * brightSim + 0.05 * noiseSim);
+          if (sim > best.sim) best = { sim, ssim, edgeSim, orientSim, brightSim, noiseSim };
+        }
+        dims.overall += best.sim;
+        dims.seiketsu += best.ssim;
+        dims.seiton += best.orientSim;
+        dims.seiri += best.edgeSim;
+        dims.seiso += best.noiseSim;
+        dims.count += 1;
+      }
+
+      const count = Math.max(1, dims.count);
+      const overallScore = Math.round((dims.overall / count) * 100);
+      const s1 = Math.round((dims.seiri / count) * 100);
+      const s2 = Math.round((dims.seiton / count) * 100);
+      const s3 = Math.round((dims.seiso / count) * 100);
+      const s4 = Math.round((dims.seiketsu / count) * 100);
+      const s5 = Math.round((s1 + s2 + s3 + s4) / 4);
+
+      const nivel1 = levelFromScore(s1);
+      const nivel2 = levelFromScore(s2);
+      const nivel3 = levelFromScore(s3);
+      const nivel4 = levelFromScore(s4);
+      const nivel5 = levelFromScore(s5);
+
+      setAnalizando(false);
+
+      const next: DetalleData = {
+        ...detalle,
+        s1_puntaje: nivel1,
+        s2_puntaje: nivel2,
+        s3_puntaje: nivel3,
+        s4_puntaje: nivel4,
+        s5_puntaje: nivel5,
+        ia_sugerido_puntaje: overallScore,
+        ia_comentario: `Auto vs ${maestras.length} original(es): ${overallScore}%. Seiri ${s1}%, Seiton ${s2}%, Seiso ${s3}%, Seiketsu ${s4}%`,
+      };
+      onChange(next);
+      toast.success("Sugerencia automática lista — revisala y guardá");
+    } catch (e) {
+      setAnalizando(false);
+      toast.error(e instanceof Error ? e.message : "Error comparando fotos");
+    }
   };
+
 
   const sem = semaforo(promedio);
 
@@ -146,21 +343,38 @@ export function SubItemCard({ detalle, fotoMaestraUrl, inspeccionId, userId, blo
           {/* IA */}
           <div className="flex flex-col sm:flex-row gap-2">
             <label className="flex-1">
-              <input type="file" accept="image/*" capture="environment" className="hidden"
-                disabled={bloqueada || uploading} onChange={handleFoto} />
+              <input type="file" accept="image/*" capture="environment" multiple className="hidden"
+                disabled={bloqueada || uploading || fotosEvidencia.length >= 4} onChange={handleFotos} />
               <span className={`flex items-center justify-center gap-2 h-11 rounded-lg border border-dashed border-border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition ${bloqueada ? "opacity-50 pointer-events-none" : ""}`}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                {detalle.foto_evidencia_url ? "Cambiar foto" : "Tomar / subir foto"}
+                {fotosEvidencia.length ? `Agregar foto (${fotosEvidencia.length}/4)` : "Tomar / subir fotos (hasta 4)"}
               </span>
             </label>
-            <Button variant="hero" disabled={bloqueada || analizando || !detalle.foto_evidencia_url} onClick={analizarConIA} className="h-11">
+            <Button variant="hero" disabled={bloqueada || analizando || !fotosEvidencia.length} onClick={analizarConIA} className="h-11">
               {analizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Sugerir con IA
+              Sugerir automático
             </Button>
           </div>
 
-          {detalle.foto_evidencia_url && (
-            <img src={detalle.foto_evidencia_url} alt="evidencia" className="w-full h-40 object-cover rounded-lg" />
+          {!!fotosEvidencia.length && (
+            <div className="grid grid-cols-2 gap-2">
+              {fotosEvidencia.map((f) => (
+                <div key={f.id} className="relative overflow-hidden rounded-lg border border-border/50 bg-muted/10">
+                  <img src={f.url} alt="evidencia" className="w-full h-28 object-cover" />
+                  {!bloqueada && (
+                    <button
+                      type="button"
+                      onClick={() => eliminarEvidencia(f)}
+                      disabled={deletingEvidenciaId === f.id}
+                      className="absolute top-2 right-2 h-8 w-8 rounded-md bg-background/80 hover:bg-background border border-border/50 flex items-center justify-center"
+                      aria-label="Eliminar foto de evidencia"
+                    >
+                      {deletingEvidenciaId === f.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
 
           {detalle.ia_comentario && (

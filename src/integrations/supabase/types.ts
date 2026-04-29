@@ -175,6 +175,48 @@ export type Database = {
         }
         Relationships: []
       }
+      evidencias_inspeccion: {
+        Row: {
+          created_at: string
+          id: string
+          inspeccion_id: string
+          storage_path: string
+          sub_item_id: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inspeccion_id: string
+          storage_path: string
+          sub_item_id: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inspeccion_id?: string
+          storage_path?: string
+          sub_item_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidencias_inspeccion_inspeccion_id_fkey"
+            columns: ["inspeccion_id"]
+            isOneToOne: false
+            referencedRelation: "inspecciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidencias_inspeccion_sub_item_id_fkey"
+            columns: ["sub_item_id"]
+            isOneToOne: false
+            referencedRelation: "sub_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sub_items: {
         Row: {
           created_at: string
@@ -210,9 +252,92 @@ export type Database = {
           },
         ]
       }
+      sub_item_maestras: {
+        Row: {
+          created_at: string
+          id: string
+          storage_path: string
+          sub_item_id: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          storage_path: string
+          sub_item_id: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          storage_path?: string
+          sub_item_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sub_item_maestras_sub_item_id_fkey"
+            columns: ["sub_item_id"]
+            isOneToOne: false
+            referencedRelation: "sub_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      configuracion: {
+        Row: {
+          id: string
+          clave: string
+          valor: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          clave: string
+          valor?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          clave?: string
+          valor?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      inspecciones_publicas: {
+        Row: {
+          inspeccion_id: string
+          sector_id: string
+          sector_nombre: string | null
+          sector_emoji: string | null
+          responsable: string
+          mes: number
+          anio: number
+          puntaje_total: number | null
+          finalizada_at: string | null
+          created_at: string | null
+        }
+        Relationships: []
+      }
+      detalles_publicos: {
+        Row: {
+          inspeccion_id: string
+          sub_item_nombre: string
+          promedio: number | null
+          s1_puntaje: number | null
+          s2_puntaje: number | null
+          s3_puntaje: number | null
+          s4_puntaje: number | null
+          s5_puntaje: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never

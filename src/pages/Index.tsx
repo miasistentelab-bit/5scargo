@@ -27,10 +27,6 @@ export default function Index() {
   const [responsable, setResponsable] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!loading && !user) navigate("/auth", { replace: true });
-  }, [user, loading, navigate]);
-
   useEffect(() => { setResponsable(nombre); }, [nombre]);
 
   useEffect(() => {
@@ -53,7 +49,10 @@ export default function Index() {
 
   const iniciar = async (sector: Sector) => {
     if (!user) return;
-    if (!responsable.trim()) return toast.error("Ingresá el nombre del responsable");
+    const maxKey = now.getFullYear() * 100 + (now.getMonth() + 1);
+    const selKey = anio * 100 + mes;
+    if (selKey > maxKey) return toast.error("No se puede iniciar una inspección en un mes futuro");
+    if (!responsable.trim()) return toast.error("Ingresá el nombre del inspector");
     setBusy(sector.id);
     // Re-confirm the active session right before insert to avoid RLS race conditions
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -81,11 +80,35 @@ export default function Index() {
     navigate(`/inspeccion/${data.id}`);
   };
 
-  if (loading || !user) return (
+  if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 className="h-6 w-6 animate-spin text-primary" />
     </div>
   );
+
+  if (!user) {
+    return (
+      <AppShell>
+        <header className="mb-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-primary mb-2 font-semibold">Auditoría 5S</p>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-balance" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            Resultados y auditorías
+          </h1>
+          <p className="text-muted-foreground mt-2 max-w-xl">
+            Podés ver los resultados sin iniciar sesión. Para realizar inspecciones, iniciá sesión.
+          </p>
+        </header>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Button variant="hero" size="xl" onClick={() => navigate("/resultados")} className="w-full">
+            Ver resultados
+          </Button>
+          <Button variant="outline" size="xl" onClick={() => navigate("/auth")} className="w-full">
+            Iniciar sesión
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
 
   const sectorColor = (nombre: string) => {
     if (nombre.includes("OFICINA")) return "var(--sector-oficinas)";
@@ -108,7 +131,7 @@ export default function Index() {
       <Card className="p-5 mb-8 bg-gradient-surface border-border/50 shadow-card">
         <div className="grid md:grid-cols-3 gap-4">
           <div>
-            <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Responsable</Label>
+            <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Inspector</Label>
             <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Tu nombre" />
           </div>
           <div>
@@ -116,16 +139,23 @@ export default function Index() {
             <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {meses().map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
+                {meses()
+                  .slice(0, anio === now.getFullYear() ? now.getMonth() + 1 : 12)
+                  .map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label className="text-xs flex items-center gap-1.5 mb-1.5"><Calendar className="h-3 w-3" />Año</Label>
-            <Select value={String(anio)} onValueChange={(v) => setAnio(Number(v))}>
+            <Select value={String(anio)} onValueChange={(v) => {
+              const nextYear = Number(v);
+              if (nextYear > now.getFullYear()) return toast.error("No se puede seleccionar un año futuro");
+              setAnio(nextYear);
+              if (nextYear === now.getFullYear() && mes > now.getMonth() + 1) setMes(now.getMonth() + 1);
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {[anio - 1, anio, anio + 1].map((a) => <SelectItem key={a} value={String(a)}>{a}</SelectItem>)}
+                {[now.getFullYear() - 1, now.getFullYear()].map((a) => <SelectItem key={a} value={String(a)}>{a}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
