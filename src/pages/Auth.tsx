@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { ClipboardCheck, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -51,11 +51,15 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-primary shadow-glow flex items-center justify-center mb-4">
-            <ClipboardCheck className="h-8 w-8 text-primary-foreground" />
+          <div className="h-16 w-16 rounded-2xl bg-white shadow-glow flex items-center justify-center mb-4 overflow-hidden p-2">
+            <img 
+              src="https://general.premioseikon.com/wp-content/uploads/2021/10/Logo-CMQ-png.png" 
+              alt="Quilmes Logo" 
+              className="w-full h-full object-contain" 
+            />
           </div>
           <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            sistema de verificacion 5S
+            5S CD-CORDOBA
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Verificación mensual</p>
         </div>
@@ -105,10 +109,20 @@ export default function Auth() {
           </Tabs>
         </Card>
 
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
           <Button type="button" variant="outline" className="w-full" onClick={() => navigate("/resultados")}>
             Ver resultados (sin iniciar sesión)
           </Button>
+          
+          <div className="flex justify-center pt-4 border-t border-border/30">
+            <div className="h-12 w-auto opacity-80 hover:opacity-100 transition-opacity">
+              <img 
+                src="https://ii.ct-stc.com/5/logos/empresas/2017/12/19/cargo-servicios-industriales-sa-42A9CB5EF1E0C4FE161830thumbnail.png" 
+                alt="Cargo Logo" 
+                className="h-full w-auto object-contain" 
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

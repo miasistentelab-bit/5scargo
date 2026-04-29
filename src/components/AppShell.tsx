@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ClipboardCheck, BarChart3, Home, LogOut, Settings, Moon, Sun, MapIcon } from "lucide-react";
+import { BarChart3, Home, LogOut, Settings, Moon, Sun, MapIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "next-themes";
@@ -24,12 +24,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-card/40 backdrop-blur-xl border-r border-border/50 flex-col p-6">
         <Link to="/" className="flex items-center gap-3 mb-10">
-          <div className="h-10 w-10 rounded-xl bg-gradient-primary shadow-glow flex items-center justify-center">
-            <ClipboardCheck className="h-5 w-5 text-primary-foreground" />
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-xl bg-white shadow-glow flex items-center justify-center overflow-hidden p-1">
+              <img 
+                src="https://general.premioseikon.com/wp-content/uploads/2021/10/Logo-CMQ-png.png" 
+                alt="Quilmes Logo" 
+                className="w-full h-full object-contain" 
+              />
+            </div>
+            <div className="h-8 w-auto opacity-80">
+              <img 
+                src="https://ii.ct-stc.com/5/logos/empresas/2017/12/19/cargo-servicios-industriales-sa-42A9CB5EF1E0C4FE161830thumbnail.png" 
+                alt="Cargo Logo" 
+                className="h-full w-auto object-contain" 
+              />
+            </div>
           </div>
           <div>
-            <div className="font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>5S Inspector</div>
-            <div className="text-xs text-muted-foreground">Auditoría mensual</div>
+            <div className="font-bold tracking-tight leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>5S CD-CORDOBA</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Auditoría</div>
           </div>
         </Link>
         <nav className="space-y-1 flex-1">
@@ -75,10 +88,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Top bar (mobile) */}
       <header className="md:hidden sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center">
-            <ClipboardCheck className="h-4 w-4 text-primary-foreground" />
+          <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center overflow-hidden p-0.5">
+            <img 
+              src="https://general.premioseikon.com/wp-content/uploads/2021/10/Logo-CMQ-png.png" 
+              alt="Quilmes Logo" 
+              className="w-full h-full object-contain" 
+            />
           </div>
-          <span className="font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>5S Inspector</span>
+          <div className="h-6 w-auto opacity-80">
+            <img 
+              src="https://ii.ct-stc.com/5/logos/empresas/2017/12/19/cargo-servicios-industriales-sa-42A9CB5EF1E0C4FE161830thumbnail.png" 
+              alt="Cargo Logo" 
+              className="h-full w-auto object-contain" 
+            />
+          </div>
+          <span className="font-bold ml-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>5S CD-CORDOBA</span>
         </div>
         <div className="flex items-center gap-2">
           <button
