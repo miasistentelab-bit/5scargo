@@ -37,7 +37,7 @@ export default function Index() {
   useEffect(() => {
     if (!user) return;
     supabase.from("inspecciones").select("id,sector_id,mes,anio,estado,puntaje_total")
-      .eq("user_id", user.id).eq("mes", mes).eq("anio", anio)
+      .eq("mes", mes).eq("anio", anio)
       .then(({ data }) => setInspecciones(data ?? []));
   }, [user, mes, anio]);
 

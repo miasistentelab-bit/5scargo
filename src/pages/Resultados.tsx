@@ -73,7 +73,7 @@ export default function Resultados() {
     if (loading) return;
     if (user) {
       supabase.from("sectores").select("*").order("orden").then(({ data }) => setSectores((data ?? []) as Sector[]));
-      supabase.from("inspecciones").select("*").eq("user_id", user.id).order("anio", { ascending: false }).order("mes", { ascending: false })
+      supabase.from("inspecciones").select("*").order("anio", { ascending: false }).order("mes", { ascending: false })
         .then(({ data }) => setInspecciones((data ?? []) as InspeccionRow[]));
       return;
     }
