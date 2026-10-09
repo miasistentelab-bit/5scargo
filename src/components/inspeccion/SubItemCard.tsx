@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Camera, Sparkles, ChevronDown, ChevronUp, Check, Trash2 } from "lucide-react";
-import { CINCO_S, NIVELES, semaforo } from "@/lib/scoring";
+import { Loader2, Camera, Sparkles, ChevronDown, ChevronUp, Check, Trash2, HelpCircle, ZoomIn, X } from "lucide-react";
+import { CINCO_S, NIVELES, PREGUNTAS_GUIA, semaforo } from "@/lib/scoring";
 import { ProgressBar } from "./ProgressBar";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 export type DetalleData = {
   id?: string;
@@ -55,6 +57,8 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
   const [analizando, setAnalizando] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deletingEvidenciaId, setDeletingEvidenciaId] = useState<string | null>(null);
+  const [preguntasAbiertas, setPreguntasAbiertas] = useState<Record<string, boolean>>({});
+  const [fotoAbierta, setFotoAbierta] = useState<{ url: string; alt: string } | null>(null);
 
   const promedio = (() => {
     const vals = CINCO_S.map((s) => detalle[s.key]).filter((v) => v != null) as number[];
@@ -63,6 +67,9 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
   })();
 
   const todoCompleto = CINCO_S.every((s) => detalle[s.key] != null);
+
+  const fotosEvidenciaIA = fotosEvidencia.filter((f) => !f.storage_path.includes("/obs-"));
+  const fotosObservacion = fotosEvidencia.filter((f) => f.storage_path.includes("/obs-"));
 
   const setNivel = (key: keyof DetalleData, val: number) => {
     onChange({ ...detalle, [key]: val });
@@ -93,10 +100,11 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
     toast.success("Guardado");
   };
 
-  const subirFoto = async (file: File) => {
+  const subirFoto = async (file: File, prefijo: string = "") => {
     setUploading(true);
     const ext = file.name.split(".").pop();
-    const path = `${userId}/${inspeccionId}/${detalle.sub_item_id}-${Date.now()}.${ext}`;
+    const prefixPart = prefijo ? `${prefijo}-` : "";
+    const path = `${userId}/${inspeccionId}/${prefixPart}${detalle.sub_item_id}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("evidencias").upload(path, file, { upsert: true });
     if (error) { setUploading(false); toast.error(error.message); return null; }
     const { data: signed } = await supabase.storage.from("evidencias").createSignedUrl(path, 60 * 60 * 24 * 365);
@@ -109,8 +117,8 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
   const handleFotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
-    if (fotosEvidencia.length >= 4) return toast.error("Máximo 4 fotos antes de pedir sugerencia");
-    const remaining = 4 - fotosEvidencia.length;
+    if (fotosEvidenciaIA.length >= 4) return toast.error("Máximo 4 fotos antes de pedir sugerencia");
+    const remaining = 4 - fotosEvidenciaIA.length;
     const slice = files.slice(0, remaining);
     let nextFotos = [...fotosEvidencia];
     for (const f of slice) {
@@ -129,7 +137,7 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
       nextFotos = [...nextFotos, savedFoto];
       onEvidenciasChange?.(detalle.sub_item_id, nextFotos);
     }
-    const firstUrl = nextFotos[0]?.url ?? null;
+    const firstUrl = nextFotos.filter((f) => !f.storage_path.includes("/obs-"))[0]?.url ?? fotosObservacion[0]?.url ?? null;
     const nextDetalle: DetalleData = {
       ...detalle,
       foto_evidencia_url: firstUrl,
@@ -140,6 +148,31 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
     await persistir(nextDetalle);
   };
 
+  const handleFotosObservacion = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    if (fotosObservacion.length >= 2) return toast.error("Máximo 2 fotos en observaciones");
+    const remaining = 2 - fotosObservacion.length;
+    const slice = files.slice(0, remaining);
+    let nextFotos = [...fotosEvidencia];
+    for (const f of slice) {
+      const up = await subirFoto(f, "obs");
+      if (!up) continue;
+      const { data: saved, error } = await supabase.from("evidencias_inspeccion")
+        .insert({ inspeccion_id: inspeccionId, sub_item_id: detalle.sub_item_id, storage_path: up.storage_path, url: up.url })
+        .select("id, url, storage_path")
+        .single();
+      if (error) {
+        await supabase.storage.from("evidencias").remove([up.storage_path]);
+        toast.error(error.message);
+        continue;
+      }
+      const savedFoto: EvidenciaFoto = { id: saved!.id, url: saved!.url, storage_path: saved!.storage_path };
+      nextFotos = [...nextFotos, savedFoto];
+      onEvidenciasChange?.(detalle.sub_item_id, nextFotos);
+    }
+  };
+
   const eliminarEvidencia = async (foto: EvidenciaFoto) => {
     setDeletingEvidenciaId(foto.id);
     const { error } = await supabase.from("evidencias_inspeccion").delete().eq("id", foto.id);
@@ -147,7 +180,8 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
     await supabase.storage.from("evidencias").remove([foto.storage_path]);
     const nextFotos = fotosEvidencia.filter((f) => f.id !== foto.id);
     onEvidenciasChange?.(detalle.sub_item_id, nextFotos);
-    const firstUrl = nextFotos[0]?.url ?? null;
+    const nextIAs = nextFotos.filter((f) => !f.storage_path.includes("/obs-"));
+    const firstUrl = nextIAs[0]?.url ?? nextFotos[0]?.url ?? null;
     const nextDetalle: DetalleData = {
       ...detalle,
       foto_evidencia_url: firstUrl,
@@ -160,11 +194,11 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
   };
 
   const analizarConIA = async () => {
-    if (!fotosEvidencia.length) return toast.error("Subí hasta 4 fotos de evidencia antes de pedir sugerencia");
+    if (!fotosEvidenciaIA.length) return toast.error("Subí hasta 4 fotos de evidencia antes de pedir sugerencia");
     const maestras = fotosMaestras.map((m) => m.url).filter(Boolean).slice(0, 4);
     if (!maestras.length) return toast.error("No hay fotos originales en Config para comparar");
     setAnalizando(true);
-    const evidencias = fotosEvidencia.map((f) => f.url).filter(Boolean).slice(0, 4);
+    const evidencias = fotosEvidenciaIA.map((f) => f.url).filter(Boolean).slice(0, 4);
 
     const toFeatures = async (url: string) => {
       const r = await fetch(url);
@@ -257,7 +291,8 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
 
     const levelFromScore = (score: number) => {
       if (score < 13) return 0;
-      if (score < 50) return 25;
+      if (score < 38) return 25;
+      if (score < 63) return 50;
       if (score < 88) return 75;
       return 100;
     };
@@ -344,27 +379,40 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
           <div className="flex flex-col sm:flex-row gap-2">
             <label className="flex-1">
               <input type="file" accept="image/*" capture="environment" multiple className="hidden"
-                disabled={bloqueada || uploading || fotosEvidencia.length >= 4} onChange={handleFotos} />
+                disabled={bloqueada || uploading || fotosEvidenciaIA.length >= 4} onChange={handleFotos} />
               <span className={`flex items-center justify-center gap-2 h-11 rounded-lg border border-dashed border-border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition ${bloqueada ? "opacity-50 pointer-events-none" : ""}`}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                {fotosEvidencia.length ? `Agregar foto (${fotosEvidencia.length}/4)` : "Tomar / subir fotos (hasta 4)"}
+                {fotosEvidenciaIA.length ? `Agregar foto (${fotosEvidenciaIA.length}/4)` : "Tomar / subir fotos (hasta 4)"}
               </span>
             </label>
-            <Button variant="hero" disabled={bloqueada || analizando || !fotosEvidencia.length} onClick={analizarConIA} className="h-11">
+            <Button variant="hero" disabled={bloqueada || analizando || !fotosEvidenciaIA.length} onClick={analizarConIA} className="h-11">
               {analizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Sugerir automático
             </Button>
           </div>
 
-          {!!fotosEvidencia.length && (
+          {!!fotosEvidenciaIA.length && (
             <div className="grid grid-cols-2 gap-2">
-              {fotosEvidencia.map((f) => (
-                <div key={f.id} className="relative overflow-hidden rounded-lg border border-border/50 bg-muted/10">
-                  <img src={f.url} alt="evidencia" className="w-full h-28 object-cover" />
+              {fotosEvidenciaIA.map((f) => (
+                <div key={f.id} className="relative overflow-hidden rounded-lg border border-border/50 bg-muted/10 group">
+                  <img
+                    src={f.url}
+                    alt="evidencia"
+                    className="w-full h-28 object-cover cursor-zoom-in transition group-hover:scale-[1.02]"
+                    onClick={() => setFotoAbierta({ url: f.url, alt: "Evidencia" })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFotoAbierta({ url: f.url, alt: "Evidencia" })}
+                    className="absolute top-2 left-2 h-8 w-8 rounded-md bg-background/80 hover:bg-background border border-border/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                    aria-label="Ver foto completa"
+                  >
+                    <ZoomIn className="h-4 w-4 text-primary" />
+                  </button>
                   {!bloqueada && (
                     <button
                       type="button"
-                      onClick={() => eliminarEvidencia(f)}
+                      onClick={(e) => { e.stopPropagation(); eliminarEvidencia(f); }}
                       disabled={deletingEvidenciaId === f.id}
                       className="absolute top-2 right-2 h-8 w-8 rounded-md bg-background/80 hover:bg-background border border-border/50 flex items-center justify-center"
                       aria-label="Eliminar foto de evidencia"
@@ -390,17 +438,32 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
           <div className="space-y-3">
             {CINCO_S.map((s) => {
               const val = detalle[s.key];
+              const preguntas = PREGUNTAS_GUIA[s.key] || [];
+              const tienePreguntas = preguntas.length > 0;
+              const abierto = preguntasAbiertas[s.key] ?? false;
               return (
-                <div key={s.key}>
-                  <div className="flex items-baseline justify-between mb-2">
-                    <div>
-                      <span className="text-xs font-bold text-primary">{s.codigo}</span>
-                      <span className="ml-2 font-semibold">{s.nombre}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">{s.traduccion}</span>
+                <div key={s.key} className="rounded-lg border border-border/40 bg-muted/15 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-primary">{s.codigo}</span>
+                        <span className="ml-2 font-semibold">{s.nombre}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{s.traduccion}</span>
+                      </div>
+                      {tienePreguntas && (
+                        <button
+                          type="button"
+                          onClick={() => setPreguntasAbiertas((prev) => ({ ...prev, [s.key]: !prev[s.key] }))}
+                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition"
+                          title="Ver preguntas guía"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
-                    {val != null && <span className="text-xs font-semibold tabular-nums" style={{ color: semaforo(val).bg }}>{val}%</span>}
+                    {val != null && <span className="text-xs font-semibold tabular-nums shrink-0" style={{ color: semaforo(val).bg }}>{val}%</span>}
                   </div>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-5 gap-1.5 mb-2">
                     {NIVELES.map((n) => (
                       <button key={n.valor} type="button" disabled={bloqueada}
                         onClick={() => setNivel(s.key, n.valor)}
@@ -410,16 +473,74 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
                       </button>
                     ))}
                   </div>
+                  {tienePreguntas && abierto && (
+                    <div className="mt-2 pt-3 border-t border-border/40 space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-primary font-semibold mb-1">Preguntas guía</p>
+                      <ul className="space-y-1.5">
+                        {preguntas.map((p, idx) => (
+                          <li key={idx} className="flex gap-2 text-xs text-foreground/85 leading-relaxed">
+                            <span className="shrink-0 h-4 w-4 inline-flex items-center justify-center rounded-full bg-primary/15 text-primary text-[10px] font-bold mt-0.5">{idx + 1}</span>
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Observaciones</label>
-            <Textarea value={detalle.observaciones ?? ""} disabled={bloqueada}
-              onChange={(e) => onChange({ ...detalle, observaciones: e.target.value })}
-              placeholder="Hallazgos, acciones correctivas, etc." rows={2} />
+          <div className="rounded-lg border border-border/40 bg-muted/15 p-3 space-y-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Observaciones</label>
+              <Textarea value={detalle.observaciones ?? ""} disabled={bloqueada}
+                onChange={(e) => onChange({ ...detalle, observaciones: e.target.value })}
+                placeholder="Hallazgos, acciones correctivas, comentarios, etc." rows={3} />
+            </div>
+            <div>
+              <label className="flex-1 block">
+                <input type="file" accept="image/*" capture="environment" multiple className="hidden"
+                  disabled={bloqueada || uploading || fotosObservacion.length >= 2} onChange={handleFotosObservacion} />
+                <span className={`flex items-center justify-center gap-2 h-10 rounded-lg border border-dashed border-border bg-muted/30 text-xs cursor-pointer hover:bg-muted/50 transition ${bloqueada ? "opacity-50 pointer-events-none" : ""}`}>
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  {fotosObservacion.length ? `Agregar foto a observaciones (${fotosObservacion.length}/2)` : "📸 Agregar 1 o 2 fotos a observaciones"}
+                </span>
+              </label>
+            </div>
+            {!!fotosObservacion.length && (
+              <div className="grid grid-cols-2 gap-2">
+                {fotosObservacion.map((f) => (
+                  <div key={f.id} className="relative overflow-hidden rounded-lg border border-border/50 bg-muted/10 group">
+                    <img
+                      src={f.url}
+                      alt="observación"
+                      className="w-full h-28 object-cover cursor-zoom-in transition group-hover:scale-[1.02]"
+                      onClick={() => setFotoAbierta({ url: f.url, alt: "Observación" })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFotoAbierta({ url: f.url, alt: "Observación" })}
+                      className="absolute top-2 left-2 h-8 w-8 rounded-md bg-background/80 hover:bg-background border border-border/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                      aria-label="Ver foto completa"
+                    >
+                      <ZoomIn className="h-4 w-4 text-primary" />
+                    </button>
+                    {!bloqueada && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); eliminarEvidencia(f); }}
+                        disabled={deletingEvidenciaId === f.id}
+                        className="absolute top-2 right-2 h-8 w-8 rounded-md bg-background/80 hover:bg-background border border-border/50 flex items-center justify-center"
+                        aria-label="Eliminar foto de observación"
+                      >
+                        {deletingEvidenciaId === f.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Button variant="hero" disabled={bloqueada || saving} onClick={() => persistir(detalle)} className="w-full">
@@ -427,6 +548,32 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
           </Button>
         </div>
       )}
+      <Dialog open={fotoAbierta !== null} onOpenChange={(open) => !open && setFotoAbierta(null)}>
+        <DialogContent className="max-w-5xl w-[95vw] p-0 overflow-hidden border-none bg-transparent shadow-none">
+          <DialogHeader>
+            <DialogTitle>
+              <VisuallyHidden>{fotoAbierta?.alt ?? "Foto"}</VisuallyHidden>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFotoAbierta(null)}
+              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-background/90 hover:bg-background border border-border/50 flex items-center justify-center z-10 shadow-lg"
+              aria-label="Cerrar"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {fotoAbierta && (
+              <img
+                src={fotoAbierta.url}
+                alt={fotoAbierta.alt}
+                className="w-full h-auto max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

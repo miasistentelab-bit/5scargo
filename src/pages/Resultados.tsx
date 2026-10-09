@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Loader2, Lock, FileCheck2, TrendingUp, Download, MapIcon } from "lucide-react";
+import { Loader2, Lock, FileCheck2, TrendingUp, Download, MapIcon, ChevronUp, ChevronDown, BarChart3 } from "lucide-react";
 import { CINCO_S, meses, semaforo } from "@/lib/scoring";
 import { ProgressBar } from "@/components/inspeccion/ProgressBar";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
@@ -60,6 +60,9 @@ export default function Resultados() {
   const [inspecciones, setInspecciones] = useState<InspeccionRow[]>([]);
   const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
   const [layoutUrl, setLayoutUrl] = useState<string | null>(null);
+  const [detallesCargados, setDetallesCargados] = useState<DetalleRow[]>([]);
+  const [cargandoDetalles, setCargandoDetalles] = useState(false);
+  const [sectorAbierto, setSectorAbierto] = useState<Record<string, boolean>>({});
   const now = new Date();
   const [desde, setDesde] = useState({ mes: 1, anio: now.getFullYear() });
   const [hasta, setHasta] = useState({ mes: now.getMonth() + 1, anio: now.getFullYear() });
@@ -122,6 +125,27 @@ export default function Resultados() {
 
   const filtradas = inspecciones.filter(inRange);
   const sectorById = useMemo(() => new Map(sectores.map((s) => [s.id, s])), [sectores]);
+
+  useEffect(() => {
+    let active = true;
+    if (!filtradas.length) {
+      setDetallesCargados([]);
+      return;
+    }
+    setCargandoDetalles(true);
+    (async () => {
+      try {
+        const rows = await fetchDetalles(filtradas.map((i) => i.id));
+        if (active) setDetallesCargados(rows);
+      } finally {
+        if (active) setCargandoDetalles(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtradas.map((i) => i.id).join(","), user]);
 
   const monthLabel = (mes: number, anio: number) => `${meses()[mes - 1]} ${anio}`;
   const monthKey = (mes: number, anio: number) => `${anio}-${String(mes).padStart(2, "0")}`;
@@ -190,10 +214,11 @@ export default function Resultados() {
                 Categoria: `${s.nombre}-${s.traduccion}`,
                 "Zona 5S": d.sub_item_nombre,
                 Criterio: CRITERIO_DEFAULT,
-                "NO cumple y desconoce": v === 0 ? check : "",
-                "NO cumple": v === 25 ? check : "",
-                "Cumple Pero Falta Mejorar": v === 75 ? check : "",
-                "Si Cumple": v === 100 ? check : "",
+                "Desconoce": v === 0 ? check : "",
+                "Cumple Parcialmente": v === 25 ? check : "",
+                "Cumple": v === 50 ? check : "",
+                "Cumple con mejoras": v === 75 ? check : "",
+                "Cumple todas las S": v === 100 ? check : "",
                 Evaluacion: typeof v === "number" ? `${v}%` : "",
               });
             }
@@ -204,10 +229,11 @@ export default function Resultados() {
           { wch: 22 },
           { wch: 30 },
           { wch: 34 },
+          { wch: 16 },
           { wch: 18 },
           { wch: 12 },
-          { wch: 22 },
-          { wch: 12 },
+          { wch: 18 },
+          { wch: 18 },
           { wch: 12 },
         ];
         utils.book_append_sheet(wb, ws, safeSheetName(`${k} ${meses()[mes - 1].slice(0, 3)}`));
@@ -368,6 +394,7 @@ export default function Resultados() {
                 CRITERIO_DEFAULT,
                 v === 0 ? check : "",
                 v === 25 ? check : "",
+                v === 50 ? check : "",
                 v === 75 ? check : "",
                 v === 100 ? check : "",
                 v != null ? `${v}%` : "",
@@ -378,7 +405,7 @@ export default function Resultados() {
 
         doc.autoTable({
           startY: 102,
-          head: [["Categoria", "Zona 5S", "Criterio", "NO cumple y desconoce", "NO cumple", "Cumple Pero Falta Mejorar", "Si Cumple", "Evaluacion"]],
+          head: [["Categoria", "Zona 5S", "Criterio", "Desconoce", "Cumple Parcialmente", "Cumple", "Cumple con mejoras", "Cumple todas las S", "Evaluacion"]],
           body: rows,
           styles: { fontSize: 9, cellPadding: 4 },
           headStyles: { fillColor: [22, 163, 74] },
@@ -414,6 +441,70 @@ export default function Resultados() {
       return { nombre: s.nombre.split(" ")[0], promedio: Math.round(prom * 10) / 10 };
     });
   }, [filtradas, sectores]);
+
+  type Sector5S = {
+    sector: Sector;
+    n: number;
+    promedio: number;
+    s1: number;
+    s2: number;
+    s3: number;
+    s4: number;
+    s5: number;
+  };
+
+  const detallePorSector = useMemo<Sector5S[]>(() => {
+    const inspIdsFiltradas = new Set(filtradas.map((i) => i.id));
+    const detallesDelPeriodo = detallesCargados.filter((d) => inspIdsFiltradas.has(d.inspeccion_id));
+    const inspToSector = new Map<string, string>();
+    filtradas.forEach((i) => inspToSector.set(i.id, i.sector_id));
+
+    type Agg = { s: number; c: number };
+    const agg = new Map<string, { s1: Agg; s2: Agg; s3: Agg; s4: Agg; s5: Agg; tot: Agg; n: Set<string> }>();
+
+    const add = (a: Agg, v: number | null) => {
+      if (v == null) return;
+      a.s += v;
+      a.c += 1;
+    };
+    const avg = (a: Agg) => (a.c ? Math.round((a.s / a.c) * 10) / 10 : 0);
+
+    detallesDelPeriodo.forEach((d) => {
+      const sectorId = inspToSector.get(d.inspeccion_id);
+      if (!sectorId) return;
+      if (!agg.has(sectorId)) {
+        agg.set(sectorId, {
+          s1: { s: 0, c: 0 }, s2: { s: 0, c: 0 }, s3: { s: 0, c: 0 }, s4: { s: 0, c: 0 }, s5: { s: 0, c: 0 },
+          tot: { s: 0, c: 0 },
+          n: new Set<string>(),
+        });
+      }
+      const g = agg.get(sectorId)!;
+      add(g.s1, d.s1_puntaje);
+      add(g.s2, d.s2_puntaje);
+      add(g.s3, d.s3_puntaje);
+      add(g.s4, d.s4_puntaje);
+      add(g.s5, d.s5_puntaje);
+      add(g.tot, d.promedio);
+      g.n.add(d.inspeccion_id);
+    });
+
+    return sectores
+      .map((sec) => {
+        const g = agg.get(sec.id);
+        return {
+          sector: sec,
+          n: g ? g.n.size : 0,
+          promedio: g ? avg(g.tot) : 0,
+          s1: g ? avg(g.s1) : 0,
+          s2: g ? avg(g.s2) : 0,
+          s3: g ? avg(g.s3) : 0,
+          s4: g ? avg(g.s4) : 0,
+          s5: g ? avg(g.s5) : 0,
+        };
+      })
+      .filter((x) => x.n > 0);
+  }, [filtradas, detallesCargados, sectores]);
 
   const promedioGeneral = evolucion.length ? evolucion.reduce((a, e) => a + e.promedio, 0) / evolucion.length : 0;
 
@@ -545,6 +636,86 @@ export default function Resultados() {
           </div>
         </Card>
       </div>
+
+      <Card className="bg-gradient-surface border-border/50 shadow-card overflow-hidden mb-6">
+        <div className="p-5 border-b border-border/50 flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Puntajes por sector (desglose 5S)</h2>
+          {cargandoDetalles && <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Analizando...</span>}
+        </div>
+        <div className="divide-y divide-border/50">
+          {detallePorSector.length === 0 && (
+            <p className="p-8 text-center text-muted-foreground text-sm">
+              {cargandoDetalles ? "Cargando detalles..." : "Sin datos suficientes para el período."}
+            </p>
+          )}
+          {detallePorSector.map((d) => {
+            const abierto = sectorAbierto[d.sector.id] ?? false;
+            const sem = semaforo(d.promedio);
+            const valores = [
+              { key: "s1_puntaje", s: CINCO_S[0], v: d.s1 },
+              { key: "s2_puntaje", s: CINCO_S[1], v: d.s2 },
+              { key: "s3_puntaje", s: CINCO_S[2], v: d.s3 },
+              { key: "s4_puntaje", s: CINCO_S[3], v: d.s4 },
+              { key: "s5_puntaje", s: CINCO_S[4], v: d.s5 },
+            ];
+            return (
+              <div key={d.sector.id}>
+                <button
+                  type="button"
+                  className="w-full p-4 flex items-center gap-4 hover:bg-muted/20 transition text-left"
+                  onClick={() => setSectorAbierto((prev) => ({ ...prev, [d.sector.id]: !prev[d.sector.id] }))}
+                >
+                  <div className="text-2xl shrink-0">{d.sector.emoji ?? "📁"}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold truncate">{d.sector.nombre}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{d.n} inspección{d.n === 1 ? "" : "es"}</span>
+                    </div>
+                    <div className="mt-2"><ProgressBar value={d.promedio} showLabel={false} height="h-2" /></div>
+                  </div>
+                  <span className="text-xl font-bold tabular-nums shrink-0" style={{ color: sem.bg, fontFamily: "'Space Grotesk', sans-serif" }}>
+                    {d.promedio.toFixed(0)}%
+                  </span>
+                  {abierto ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+                </button>
+                {abierto && (
+                  <div className="px-4 pb-5 space-y-2 bg-muted/10 border-t border-border/30">
+                    <div className="grid grid-cols-5 gap-2 pt-4">
+                      {valores.map(({ key, s, v }) => {
+                        const ss = semaforo(v);
+                        return (
+                          <div key={key} className="text-center">
+                            <div className="text-[10px] font-bold text-primary uppercase tracking-wide mb-1">{s.codigo}</div>
+                            <div className="text-[10px] text-muted-foreground mb-1 truncate" title={s.nombre}>{s.nombre}</div>
+                            <div className="h-2 w-full rounded-full bg-muted overflow-hidden mb-1">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${v}%`, background: ss.bg }} />
+                            </div>
+                            <div className="text-sm font-bold tabular-nums" style={{ color: ss.bg }}>{v.toFixed(0)}%</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5 pt-2">
+                      {valores.map(({ key, s, v }) => {
+                        const ss = semaforo(v);
+                        return (
+                          <div key={`row-${key}`} className="flex items-center gap-3 px-3 py-2 rounded-md bg-background/40 border border-border/30">
+                            <span className="text-xs font-bold text-primary w-8 shrink-0">{s.codigo}</span>
+                            <span className="text-xs font-medium w-24 shrink-0">{s.nombre}</span>
+                            <span className="text-[11px] text-muted-foreground flex-1 min-w-0 truncate">{s.traduccion}</span>
+                            <div className="flex-1 min-w-[120px]"><ProgressBar value={v} showLabel={false} height="h-2" /></div>
+                            <span className="text-xs font-bold tabular-nums w-12 text-right shrink-0" style={{ color: ss.bg }}>{v.toFixed(0)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       <Card className="bg-gradient-surface border-border/50 shadow-card overflow-hidden">
         <div className="p-5 border-b border-border/50">

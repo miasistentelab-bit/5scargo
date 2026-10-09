@@ -22,7 +22,7 @@ type SubItem = { id: string; sector_id: string; nombre: string; foto_maestra_url
 type MaestraRow = { id: string; sub_item_id: string; url: string; storage_path: string | null; created_at: string };
 
 export default function Config() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [sectores, setSectores] = useState<Sector[]>([]);
   const [subsBySec, setSubsBySec] = useState<Record<string, SubItem[]>>({});
@@ -101,9 +101,121 @@ export default function Config() {
     reload();
   };
 
+  const extraerMensaje = (e: unknown): { msg: string; isAuth: boolean } => {
+    console.error("Error eliminando sub_item:", e);
+    const s =
+      (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string"
+        ? String((e as any).message)
+        : "") ||
+      (e && typeof e === "object" && "error_description" in e && typeof (e as any).error_description === "string"
+        ? String((e as any).error_description)
+        : "") ||
+      (typeof e === "string" ? e : "") ||
+      "Error eliminando ítem";
+    const isAuth = /Refresh Token|JWT|Unauthorized|AuthApiError|invalid.*token/i.test(s);
+    return { msg: s, isAuth };
+  };
+
   const delSub = async (id: string) => {
-    const { error } = await supabase.from("sub_items").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (!confirm("¿Seguro que querés eliminar este ítem? Se borrarán también todas las inspecciones y fotos asociadas.")) {
+      return;
+    }
+    try {
+      const { data: evidencias, error: errEv } = await supabase
+        .from("evidencias_inspeccion")
+        .select("storage_path")
+        .eq("sub_item_id", id);
+      if (errEv) throw errEv;
+      if (evidencias && evidencias.length > 0) {
+        const paths = evidencias.map((e) => e.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from("evidencias").remove(paths);
+        }
+      }
+      const { error: errDelEv } = await supabase.from("evidencias_inspeccion").delete().eq("sub_item_id", id);
+      if (errDelEv) throw errDelEv;
+
+      const { count: prevCount, error: errCount1 } = await supabase
+        .from("detalles_inspeccion")
+        .select("*", { count: "exact", head: true })
+        .eq("sub_item_id", id);
+      if (errCount1) throw errCount1;
+      console.log(`[delSub] sub_item=${id} detalles_inspeccion antes de borrar: ${prevCount ?? 0}`);
+
+      if ((prevCount ?? 0) > 0) {
+        const { data: inspIdsRows, error: errInspIds } = await supabase
+          .from("detalles_inspeccion")
+          .select("inspeccion_id")
+          .eq("sub_item_id", id);
+        if (errInspIds) throw errInspIds;
+        const inspIds = Array.from(new Set((inspIdsRows ?? []).map((r) => (r as any).inspeccion_id)));
+        console.log(`[delSub] inspecciones afectadas: ${inspIds.length}`);
+
+        if (inspIds.length > 0) {
+          const { data: inspEstados, error: errInspEst } = await supabase
+            .from("inspecciones")
+            .select("id, estado")
+            .in("id", inspIds);
+          if (errInspEst) throw errInspEst;
+          const finalizadas = (inspEstados ?? []).filter((i) => (i as any).estado === "finalizada").map((i) => (i as any).id);
+          console.log(`[delSub] inspecciones finalizadas: ${finalizadas.length}`);
+          if (finalizadas.length > 0) {
+            console.log(`[delSub] cambiando a borrador temporalmente para permitir borrado...`);
+            const { error: errUpd } = await supabase
+              .from("inspecciones")
+              .update({ estado: "borrador", updated_at: new Date().toISOString() })
+              .in("id", finalizadas);
+            if (errUpd) {
+              console.warn(`[delSub] no se pudieron des-finalizar inspecciones (puede ser RLS). Error:`, errUpd);
+            }
+          }
+        }
+
+        const { error: errDelDet } = await supabase.from("detalles_inspeccion").delete().eq("sub_item_id", id);
+        if (errDelDet) throw errDelDet;
+
+        const { count: afterCount, error: errCount2 } = await supabase
+          .from("detalles_inspeccion")
+          .select("*", { count: "exact", head: true })
+          .eq("sub_item_id", id);
+        if (errCount2) throw errCount2;
+        console.log(`[delSub] detalles_inspeccion DESPUÉS de borrar: ${afterCount ?? 0}`);
+
+        if ((afterCount ?? 0) > 0) {
+          throw new Error(
+            `No se pudieron borrar ${afterCount} registros de detalles_inspeccion (probablemente RLS).\n` +
+            `Solución: abrí el SQL Editor en Supabase y corré:\n` +
+            `ALTER TABLE detalles_inspeccion DROP CONSTRAINT detalles_inspeccion_sub_item_id_fkey;\n` +
+            `ALTER TABLE detalles_inspeccion ADD CONSTRAINT detalles_inspeccion_sub_item_id_fkey FOREIGN KEY (sub_item_id) REFERENCES sub_items(id) ON DELETE CASCADE;`
+          );
+        }
+      }
+
+      const { data: maestras, error: errMaes } = await supabase
+        .from("sub_item_maestras")
+        .select("storage_path")
+        .eq("sub_item_id", id);
+      if (errMaes) throw errMaes;
+      if (maestras && maestras.length > 0) {
+        const paths = maestras.map((m) => m.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from("evidencias").remove(paths);
+        }
+      }
+      const { error: errDelMaes } = await supabase.from("sub_item_maestras").delete().eq("sub_item_id", id);
+      if (errDelMaes) throw errDelMaes;
+      const { error } = await supabase.from("sub_items").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Ítem eliminado correctamente");
+    } catch (e: unknown) {
+      const { msg, isAuth } = extraerMensaje(e);
+      if (isAuth) {
+        toast.error("Sesión expirada — volvé a iniciar sesión");
+        await signOut();
+        return;
+      }
+      return toast.error(msg);
+    }
     reload();
   };
 
