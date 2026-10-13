@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Home, LogOut, Settings, Moon, Sun, MapIcon } from "lucide-react";
+import { BarChart3, Home, LogOut, Settings, Moon, Sun, MapIcon, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "next-themes";
@@ -17,6 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/resultados", icon: BarChart3, label: "Resultados" },
     { to: "/layout", icon: MapIcon, label: "Layout" },
     { to: "/config", icon: Settings, label: "Config", restricted: true },
+    { to: "/usuarios", icon: Users, label: "Usuarios", restricted: true },
   ].filter(it => !it.restricted || user);
 
   return (
@@ -59,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="border-t border-border/50 pt-4 space-y-2">
           {user && (
             <div className="px-3 text-xs">
-              <div className="text-muted-foreground">Inspector</div>
+              <div className="text-muted-foreground">Auditor</div>
               <div className="font-medium truncate">{nombre || "—"}</div>
             </div>
           )}

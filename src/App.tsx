@@ -11,6 +11,7 @@ import Inspeccion from "./pages/Inspeccion.tsx";
 import Resultados from "./pages/Resultados.tsx";
 import Config from "./pages/Config.tsx";
 import Layout from "./pages/Layout.tsx";
+import Usuarios from "./pages/Usuarios.tsx";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/resultados" element={<Resultados />} />
             <Route path="/config" element={<Config />} />
             <Route path="/layout" element={<Layout />} />
+            <Route path="/usuarios" element={<Usuarios />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

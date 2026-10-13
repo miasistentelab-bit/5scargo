@@ -131,7 +131,7 @@ export default function Index() {
       <Card className="p-5 mb-8 bg-gradient-surface border-border/50 shadow-card">
         <div className="grid md:grid-cols-3 gap-4">
           <div>
-            <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Inspector</Label>
+            <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Auditor</Label>
             <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Tu nombre" />
           </div>
           <div>

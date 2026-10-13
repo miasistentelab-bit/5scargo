@@ -9,6 +9,7 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [nombre, setNombre] = useState<string>("");
+  const [rol, setRol] = useState<string>("usuario");
 
   const limpiarSesionYNavegar = async () => {
     try {
@@ -22,6 +23,7 @@ export function useAuth() {
       setSession(null);
       setUser(null);
       setNombre("");
+      setRol("usuario");
       navigate("/auth", { replace: true });
     }
   };
@@ -36,8 +38,11 @@ export function useAuth() {
       setUser(s?.user ?? null);
       if (s?.user) {
         setTimeout(() => {
-          supabase.from("profiles").select("nombre").eq("id", s.user.id).maybeSingle()
-            .then(({ data }) => setNombre(data?.nombre ?? ""))
+          supabase.from("profiles").select("nombre, rol").eq("id", s.user.id).maybeSingle()
+            .then(({ data }) => {
+              setNombre(data?.nombre ?? "");
+              setRol(data?.rol ?? "usuario");
+            })
             .catch(async (err) => {
               const msg = String(err?.message ?? err);
               if (msg.includes("Refresh Token") || msg.includes("JWT") || msg.includes("Unauthorized")) {
@@ -47,6 +52,7 @@ export function useAuth() {
         }, 0);
       } else {
         setNombre("");
+        setRol("usuario");
       }
     });
 
@@ -62,8 +68,11 @@ export function useAuth() {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          await supabase.from("profiles").select("nombre").eq("id", session.user.id).maybeSingle()
-            .then(({ data }) => setNombre(data?.nombre ?? ""))
+          await supabase.from("profiles").select("nombre, rol").eq("id", session.user.id).maybeSingle()
+            .then(({ data }) => {
+              setNombre(data?.nombre ?? "");
+              setRol(data?.rol ?? "usuario");
+            })
             .catch(async (err) => {
               const msg = String(err?.message ?? err);
               if (msg.includes("Refresh Token") || msg.includes("JWT") || msg.includes("Unauthorized")) {
@@ -84,5 +93,5 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  return { session, user, loading, nombre, setNombre, signOut: limpiarSesionYNavegar };
+  return { session, user, loading, nombre, setNombre, rol, signOut: limpiarSesionYNavegar };
 }

@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2, Camera, ImageIcon } from "lucide-react";
+import { Loader2, Plus, Trash2, Camera, ImageIcon, X, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 
 type MaestraFoto = {
@@ -22,12 +22,14 @@ type SubItem = { id: string; sector_id: string; nombre: string; foto_maestra_url
 type MaestraRow = { id: string; sub_item_id: string; url: string; storage_path: string | null; created_at: string };
 
 export default function Config() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, rol } = useAuth();
   const navigate = useNavigate();
   const [sectores, setSectores] = useState<Sector[]>([]);
   const [subsBySec, setSubsBySec] = useState<Record<string, SubItem[]>>({});
   const [maestrasBySub, setMaestrasBySub] = useState<Record<string, MaestraFoto[]>>({});
   const [nuevo, setNuevo] = useState<Record<string, string>>({});
+  const [fotoModal, setFotoModal] = useState<{ url: string; rotation: number; zoom: number } | null>(null);
+  const isAdmin = rol === "admin";
 
   useEffect(() => { if (!loading && !user) navigate("/auth"); }, [user, loading, navigate]);
 
@@ -87,6 +89,7 @@ export default function Config() {
     } else {
       setMaestrasBySub({});
     }
+
   };
 
   useEffect(() => { if (user) reload(); }, [user]);
@@ -253,7 +256,9 @@ export default function Config() {
   };
 
   const eliminarMaestra = async (foto: MaestraFoto) => {
-    if (!user) return;
+    if (!user || !isAdmin) {
+      return toast.error("Solo los administradores pueden eliminar fotos");
+    }
     if (foto.source === "legacy") {
       const { error } = await supabase.from("sub_items").update({ foto_maestra_url: null }).eq("id", foto.sub_item_id);
       if (error) return toast.error(error.message);
@@ -269,6 +274,32 @@ export default function Config() {
       [foto.sub_item_id]: (prev[foto.sub_item_id] ?? []).filter((m) => m.id !== foto.id),
     }));
     toast.success("Foto original eliminada");
+  };
+
+  const abrirFotoModal = (url: string) => {
+    setFotoModal({ url, rotation: 0, zoom: 1 });
+  };
+
+  const cerrarFotoModal = () => {
+    setFotoModal(null);
+  };
+
+  const rotarFoto = () => {
+    if (fotoModal) {
+      setFotoModal({ ...fotoModal, rotation: (fotoModal.rotation + 90) % 360 });
+    }
+  };
+
+  const zoomIn = () => {
+    if (fotoModal && fotoModal.zoom < 3) {
+      setFotoModal({ ...fotoModal, zoom: fotoModal.zoom + 0.5 });
+    }
+  };
+
+  const zoomOut = () => {
+    if (fotoModal && fotoModal.zoom > 0.5) {
+      setFotoModal({ ...fotoModal, zoom: fotoModal.zoom - 0.5 });
+    }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
@@ -295,16 +326,23 @@ export default function Config() {
                   <span className="flex-1 text-sm font-medium truncate">{sub.nombre}</span>
                   <div className="flex items-center gap-1">
                     {(maestrasBySub[sub.id] ?? []).slice(0, 4).map((m) => (
-                      <div key={m.id} className="relative h-9 w-9 rounded overflow-hidden border border-border/50">
-                        <img src={m.url} className="h-9 w-9 object-cover" alt="maestra" />
-                        <button
-                          type="button"
-                          onClick={() => eliminarMaestra(m)}
-                          className="absolute inset-0 bg-background/40 opacity-0 hover:opacity-100 transition flex items-center justify-center"
-                          aria-label="Eliminar foto original"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </button>
+                      <div key={m.id} className="relative h-9 w-9 rounded overflow-hidden border border-border/50 cursor-pointer group">
+                        <img
+                          src={m.url}
+                          className="h-9 w-9 object-cover"
+                          alt="maestra"
+                          onClick={() => abrirFotoModal(m.url)}
+                        />
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); eliminarMaestra(m); }}
+                            className="absolute inset-0 bg-background/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                            aria-label="Eliminar foto original"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </button>
+                        )}
                       </div>
                     ))}
                     {!((maestrasBySub[sub.id] ?? []).length) && (
@@ -313,26 +351,87 @@ export default function Config() {
                       </div>
                     )}
                   </div>
-                  <label className={`cursor-pointer ${((maestrasBySub[sub.id] ?? []).length >= 4) ? "opacity-50 pointer-events-none" : ""}`}>
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) subirMaestra(sub.id, f); }} />
-                    <span className="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-muted text-muted-foreground"><Camera className="h-4 w-4" /></span>
-                  </label>
-                  <button onClick={() => delSub(sub.id)} className="h-8 w-8 rounded hover:bg-destructive/10 text-destructive flex items-center justify-center">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {isAdmin && (
+                    <label className={`cursor-pointer ${((maestrasBySub[sub.id] ?? []).length >= 4) ? "opacity-50 pointer-events-none" : ""}`}>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) subirMaestra(sub.id, f); }} />
+                      <span className="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-muted text-muted-foreground"><Camera className="h-4 w-4" /></span>
+                    </label>
+                  )}
+                  {isAdmin && (
+                    <button onClick={() => delSub(sub.id)} className="h-8 w-8 rounded hover:bg-destructive/10 text-destructive flex items-center justify-center">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
-            <div className="flex gap-2">
-              <Input placeholder="Nuevo sub-ítem (ej. Estantería C)"
-                value={nuevo[s.id] ?? ""} onChange={(e) => setNuevo({ ...nuevo, [s.id]: e.target.value })}
-                onKeyDown={(e) => e.key === "Enter" && addSub(s.id)} />
-              <Button variant="hero" onClick={() => addSub(s.id)}><Plus className="h-4 w-4" />Agregar</Button>
-            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Input placeholder="Nuevo sub-ítem (ej. Estantería C)"
+                  value={nuevo[s.id] ?? ""} onChange={(e) => setNuevo({ ...nuevo, [s.id]: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && addSub(s.id)} />
+                <Button variant="hero" onClick={() => addSub(s.id)}><Plus className="h-4 w-4" />Agregar</Button>
+              </div>
+            )}
           </Card>
         ))}
       </div>
+
+      {/* Modal para ver foto completa con zoom */}
+      {fotoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="relative max-w-5xl max-h-[90vh] w-full flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Foto maestra</h3>
+              <button
+                onClick={cerrarFotoModal}
+                className="text-white hover:text-gray-300 transition"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-lg bg-black/50 flex items-center justify-center relative">
+              <img
+                src={fotoModal.url}
+                alt="Foto maestra completa"
+                className="max-w-full max-h-[70vh] object-contain transition-transform duration-200"
+                style={{
+                  transform: `scale(${fotoModal.zoom}) rotate(${fotoModal.rotation}deg)`,
+                }}
+              />
+            </div>
+            <div className="flex justify-center gap-4 mt-4">
+              <button
+                onClick={zoomOut}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                disabled={fotoModal.zoom <= 0.5}
+              >
+                <ZoomOut className="h-4 w-4" />
+                <span>Zoom -</span>
+              </button>
+              <span className="text-white flex items-center">
+                {Math.round(fotoModal.zoom * 100)}%
+              </span>
+              <button
+                onClick={zoomIn}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                disabled={fotoModal.zoom >= 3}
+              >
+                <ZoomIn className="h-4 w-4" />
+                <span>Zoom +</span>
+              </button>
+              <button
+                onClick={rotarFoto}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+              >
+                <RotateCw className="h-4 w-4" />
+                <span>Rotar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
