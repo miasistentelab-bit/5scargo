@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -14,7 +14,6 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [nombre, setNombre] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,21 +29,6 @@ export default function Auth() {
     if (error) return toast.error(error.message);
     toast.success("Bienvenido");
     navigate("/", { replace: true });
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: { nombre: nombre || email.split("@")[0] },
-      },
-    });
-    setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Cuenta creada. Ya podés entrar.");
   };
 
   return (
@@ -65,48 +49,19 @@ export default function Auth() {
         </div>
 
         <Card className="p-6 shadow-elevated bg-gradient-surface border-border/50">
-          <Tabs defaultValue="login">
-            <TabsList className="grid grid-cols-2 mb-6 w-full">
-              <TabsTrigger value="login">Ingresar</TabsTrigger>
-              <TabsTrigger value="signup">Crear cuenta</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <Label>Email</Label>
-                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vos@empresa.com" />
-                </div>
-                <div>
-                  <Label>Contraseña</Label>
-                  <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" disabled={loading} variant="hero" className="w-full">
-                  {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Ingresar
-                </Button>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div>
-                  <Label>Nombre del inspector</Label>
-                  <Input required value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Juan Pérez" />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Contraseña</Label>
-                  <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" disabled={loading} variant="hero" className="w-full">
-                  {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Crear cuenta
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <Label>Email</Label>
+              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vos@empresa.com" />
+            </div>
+            <div>
+              <Label>Contraseña</Label>
+              <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+            </div>
+            <Button type="submit" disabled={loading} variant="hero" className="w-full">
+              {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Ingresar
+            </Button>
+          </form>
         </Card>
 
         <div className="mt-4 space-y-4">
