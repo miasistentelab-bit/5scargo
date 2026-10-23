@@ -60,6 +60,8 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
   const [preguntasAbiertas, setPreguntasAbiertas] = useState<Record<string, boolean>>({});
   const [fotoAbierta, setFotoAbierta] = useState<{ url: string; alt: string } | null>(null);
 
+  const yaGuardado = !!detalle.id;
+
   const promedio = (() => {
     const vals = CINCO_S.map((s) => detalle[s.key]).filter((v) => v != null) as number[];
     if (!vals.length) return 0;
@@ -379,13 +381,13 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
           <div className="flex flex-col sm:flex-row gap-2">
             <label className="flex-1">
               <input type="file" accept="image/*" capture="environment" multiple className="hidden"
-                disabled={bloqueada || uploading || fotosEvidenciaIA.length >= 4} onChange={handleFotos} />
-              <span className={`flex items-center justify-center gap-2 h-11 rounded-lg border border-dashed border-border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition ${bloqueada ? "opacity-50 pointer-events-none" : ""}`}>
+                disabled={bloqueada || yaGuardado || uploading || fotosEvidenciaIA.length >= 4} onChange={handleFotos} />
+              <span className={`flex items-center justify-center gap-2 h-11 rounded-lg border border-dashed border-border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition ${bloqueada || yaGuardado ? "opacity-50 pointer-events-none" : ""}`}>
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                 {fotosEvidenciaIA.length ? `Agregar foto (${fotosEvidenciaIA.length}/4)` : "Tomar / subir fotos (hasta 4)"}
               </span>
             </label>
-            <Button variant="hero" disabled={bloqueada || analizando || !fotosEvidenciaIA.length} onClick={analizarConIA} className="h-11">
+            <Button variant="hero" disabled={bloqueada || yaGuardado || analizando || !fotosEvidenciaIA.length} onClick={analizarConIA} className="h-11">
               {analizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Sugerir automático
             </Button>
@@ -409,7 +411,7 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
                   >
                     <ZoomIn className="h-4 w-4 text-primary" />
                   </button>
-                  {!bloqueada && (
+                  {!bloqueada && !yaGuardado && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); eliminarEvidencia(f); }}
@@ -465,7 +467,7 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 mb-2">
                     {NIVELES.map((n) => (
-                      <button key={n.valor} type="button" disabled={bloqueada}
+                      <button key={n.valor} type="button" disabled={bloqueada || yaGuardado}
                         onClick={() => setNivel(s.key, n.valor)}
                         className={`p-2 rounded-lg text-xs font-medium transition border ${val === n.valor ? "border-primary bg-primary/15 text-primary" : "border-border bg-muted/30 text-muted-foreground hover:bg-muted/60"}`}>
                         <div className="font-bold tabular-nums">{n.short}</div>
@@ -494,15 +496,15 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
           <div className="rounded-lg border border-border/40 bg-muted/15 p-3 space-y-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Observaciones</label>
-              <Textarea value={detalle.observaciones ?? ""} disabled={bloqueada}
+              <Textarea value={detalle.observaciones ?? ""} disabled={bloqueada || yaGuardado}
                 onChange={(e) => onChange({ ...detalle, observaciones: e.target.value })}
                 placeholder="Hallazgos, acciones correctivas, comentarios, etc." rows={3} />
             </div>
             <div>
               <label className="flex-1 block">
                 <input type="file" accept="image/*" capture="environment" multiple className="hidden"
-                  disabled={bloqueada || uploading || fotosObservacion.length >= 2} onChange={handleFotosObservacion} />
-                <span className={`flex items-center justify-center gap-2 h-10 rounded-lg border border-dashed border-border bg-muted/30 text-xs cursor-pointer hover:bg-muted/50 transition ${bloqueada ? "opacity-50 pointer-events-none" : ""}`}>
+                  disabled={bloqueada || yaGuardado || uploading || fotosObservacion.length >= 2} onChange={handleFotosObservacion} />
+                <span className={`flex items-center justify-center gap-2 h-10 rounded-lg border border-dashed border-border bg-muted/30 text-xs cursor-pointer hover:bg-muted/50 transition ${bloqueada || yaGuardado ? "opacity-50 pointer-events-none" : ""}`}>
                   {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
                   {fotosObservacion.length ? `Agregar foto a observaciones (${fotosObservacion.length}/2)` : "📸 Agregar 1 o 2 fotos a observaciones"}
                 </span>
@@ -526,7 +528,7 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
                     >
                       <ZoomIn className="h-4 w-4 text-primary" />
                     </button>
-                    {!bloqueada && (
+                    {!bloqueada && !yaGuardado && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); eliminarEvidencia(f); }}
@@ -543,9 +545,16 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
             )}
           </div>
 
-          <Button variant="hero" disabled={bloqueada || saving} onClick={() => persistir(detalle)} className="w-full">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Guardar ítem
-          </Button>
+          {!yaGuardado && (
+            <Button variant="hero" disabled={bloqueada || saving} onClick={() => persistir(detalle)} className="w-full">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Guardar ítem
+            </Button>
+          )}
+          {yaGuardado && (
+            <div className="text-center text-xs text-muted-foreground py-2">
+              ✓ Ítem guardado y bloqueado
+            </div>
+          )}
         </div>
       )}
       <Dialog open={fotoAbierta !== null} onOpenChange={(open) => !open && setFotoAbierta(null)}>
