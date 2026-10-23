@@ -147,7 +147,7 @@ export default function Inspeccion() {
     d.s1_puntaje != null && d.s2_puntaje != null && d.s3_puntaje != null && d.s4_puntaje != null && d.s5_puntaje != null
   ).length;
   const esPropia = insp?.user_id === user?.id;
-  const bloqueada = insp?.estado === "finalizada";
+  const bloqueada = insp?.estado === "finalizada" || !esPropia;
 
   const updateDetalle = (next: DetalleData) => {
     setDetalles((prev) => prev.map((d) => d.sub_item_id === next.sub_item_id ? next : d));
