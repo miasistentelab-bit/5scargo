@@ -6,6 +6,10 @@ drop policy if exists "detalles_select_own" on public.detalles_inspeccion;
 drop policy if exists "detalles_insert_own" on public.detalles_inspeccion;
 drop policy if exists "detalles_update_own" on public.detalles_inspeccion;
 drop policy if exists "detalles_delete_own" on public.detalles_inspeccion;
+drop policy if exists "detalles_select_auth" on public.detalles_inspeccion;
+drop policy if exists "detalles_insert_auth" on public.detalles_inspeccion;
+drop policy if exists "detalles_update_auth" on public.detalles_inspeccion;
+drop policy if exists "detalles_delete_auth" on public.detalles_inspeccion;
 
 create policy "detalles_select_auth" on public.detalles_inspeccion for select to authenticated
   using (exists (select 1 from public.inspecciones i where i.id = inspeccion_id and i.estado = 'borrador'));
