@@ -1,0 +1,437 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { AppShell } from "@/components/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Loader2, Plus, Trash2, Camera, ImageIcon, X, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { toast } from "sonner";
+
+type MaestraFoto = {
+  id: string;
+  sub_item_id: string;
+  url: string;
+  storage_path: string | null;
+  source: "table" | "legacy";
+};
+
+type Sector = { id: string; nombre: string; emoji: string; orden: number };
+type SubItem = { id: string; sector_id: string; nombre: string; foto_maestra_url: string | null; orden: number; created_at: string };
+type MaestraRow = { id: string; sub_item_id: string; url: string; storage_path: string | null; created_at: string };
+
+export default function Config() {
+  const { user, loading, signOut, rol } = useAuth();
+  const navigate = useNavigate();
+  const [sectores, setSectores] = useState<Sector[]>([]);
+  const [subsBySec, setSubsBySec] = useState<Record<string, SubItem[]>>({});
+  const [maestrasBySub, setMaestrasBySub] = useState<Record<string, MaestraFoto[]>>({});
+  const [nuevo, setNuevo] = useState<Record<string, string>>({});
+  const [fotoModal, setFotoModal] = useState<{ url: string; rotation: number; zoom: number } | null>(null);
+  const isAdmin = rol === "admin";
+
+  useEffect(() => { if (!loading && !user) navigate("/auth"); }, [user, loading, navigate]);
+
+  const extractStoragePath = (url: string) => {
+    try {
+      const u = new URL(url);
+      const prefixes = ["/storage/v1/object/sign/evidencias/", "/storage/v1/object/public/evidencias/"];
+      const match = prefixes.map((p) => ({ p, idx: u.pathname.indexOf(p) })).find((x) => x.idx !== -1);
+      if (!match) return null;
+      return decodeURIComponent(u.pathname.slice(match.idx + match.p.length));
+    } catch {
+      return null;
+    }
+  };
+
+  const reload = async () => {
+    const { data: secs } = await supabase.from("sectores").select("*").order("orden");
+    setSectores((secs ?? []) as unknown as Sector[]);
+    const { data: subs } = await supabase.from("sub_items").select("*").order("orden");
+    const subsTyped = (subs ?? []) as unknown as SubItem[];
+    const map: Record<string, SubItem[]> = {};
+    for (const s of subsTyped) (map[s.sector_id] = map[s.sector_id] ?? []).push(s);
+    setSubsBySec(map);
+    const subIds = subsTyped.map((s) => s.id);
+    if (subIds.length) {
+      const { data: maestras } = await supabase
+        .from("sub_item_maestras")
+        .select("id, sub_item_id, url, storage_path, created_at")
+        .in("sub_item_id", subIds)
+        .order("created_at", { ascending: true });
+      const by: Record<string, MaestraFoto[]> = {};
+      ((maestras ?? []) as unknown as MaestraRow[]).forEach((m) => {
+        (by[m.sub_item_id] = by[m.sub_item_id] ?? []).push({
+          id: m.id,
+          sub_item_id: m.sub_item_id,
+          url: m.url,
+          storage_path: m.storage_path,
+          source: "table",
+        });
+      });
+      subsTyped.forEach((sub) => {
+        const current = by[sub.id] ?? [];
+        if (sub.foto_maestra_url) {
+          const legacy: MaestraFoto = {
+            id: `legacy:${sub.id}`,
+            sub_item_id: sub.id,
+            url: sub.foto_maestra_url,
+            storage_path: extractStoragePath(sub.foto_maestra_url),
+            source: "legacy",
+          };
+          by[sub.id] = [legacy, ...current].slice(0, 4);
+        } else {
+          by[sub.id] = current.slice(0, 4);
+        }
+      });
+      setMaestrasBySub(by);
+    } else {
+      setMaestrasBySub({});
+    }
+
+  };
+
+  useEffect(() => { if (user) reload(); }, [user]);
+
+  const addSub = async (sectorId: string) => {
+    const nombre = (nuevo[sectorId] ?? "").trim();
+    if (!nombre) return;
+    const orden = (subsBySec[sectorId]?.length ?? 0) + 1;
+    const { error } = await supabase.from("sub_items").insert({ sector_id: sectorId, nombre, orden });
+    if (error) return toast.error(error.message);
+    setNuevo({ ...nuevo, [sectorId]: "" });
+    reload();
+  };
+
+  const extraerMensaje = (e: unknown): { msg: string; isAuth: boolean } => {
+    console.error("Error eliminando sub_item:", e);
+    const s =
+      (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string"
+        ? String((e as any).message)
+        : "") ||
+      (e && typeof e === "object" && "error_description" in e && typeof (e as any).error_description === "string"
+        ? String((e as any).error_description)
+        : "") ||
+      (typeof e === "string" ? e : "") ||
+      "Error eliminando ítem";
+    const isAuth = /Refresh Token|JWT|Unauthorized|AuthApiError|invalid.*token/i.test(s);
+    return { msg: s, isAuth };
+  };
+
+  const delSub = async (id: string) => {
+    if (!confirm("¿Seguro que querés eliminar este ítem? Se borrarán también todas las inspecciones y fotos asociadas.")) {
+      return;
+    }
+    try {
+      const { data: evidencias, error: errEv } = await supabase
+        .from("evidencias_inspeccion")
+        .select("storage_path")
+        .eq("sub_item_id", id);
+      if (errEv) throw errEv;
+      if (evidencias && evidencias.length > 0) {
+        const paths = evidencias.map((e) => e.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from("evidencias").remove(paths);
+        }
+      }
+      const { error: errDelEv } = await supabase.from("evidencias_inspeccion").delete().eq("sub_item_id", id);
+      if (errDelEv) throw errDelEv;
+
+      const { count: prevCount, error: errCount1 } = await supabase
+        .from("detalles_inspeccion")
+        .select("*", { count: "exact", head: true })
+        .eq("sub_item_id", id);
+      if (errCount1) throw errCount1;
+      console.log(`[delSub] sub_item=${id} detalles_inspeccion antes de borrar: ${prevCount ?? 0}`);
+
+      if ((prevCount ?? 0) > 0) {
+        const { data: inspIdsRows, error: errInspIds } = await supabase
+          .from("detalles_inspeccion")
+          .select("inspeccion_id")
+          .eq("sub_item_id", id);
+        if (errInspIds) throw errInspIds;
+        const inspIds = Array.from(new Set((inspIdsRows ?? []).map((r) => (r as any).inspeccion_id)));
+        console.log(`[delSub] inspecciones afectadas: ${inspIds.length}`);
+
+        if (inspIds.length > 0) {
+          const { data: inspEstados, error: errInspEst } = await supabase
+            .from("inspecciones")
+            .select("id, estado")
+            .in("id", inspIds);
+          if (errInspEst) throw errInspEst;
+          const finalizadas = (inspEstados ?? []).filter((i) => (i as any).estado === "finalizada").map((i) => (i as any).id);
+          console.log(`[delSub] inspecciones finalizadas: ${finalizadas.length}`);
+          if (finalizadas.length > 0) {
+            console.log(`[delSub] cambiando a borrador temporalmente para permitir borrado...`);
+            const { error: errUpd } = await supabase
+              .from("inspecciones")
+              .update({ estado: "borrador", updated_at: new Date().toISOString() })
+              .in("id", finalizadas);
+            if (errUpd) {
+              console.warn(`[delSub] no se pudieron des-finalizar inspecciones (puede ser RLS). Error:`, errUpd);
+            }
+          }
+        }
+
+        const { error: errDelDet } = await supabase.from("detalles_inspeccion").delete().eq("sub_item_id", id);
+        if (errDelDet) throw errDelDet;
+
+        const { count: afterCount, error: errCount2 } = await supabase
+          .from("detalles_inspeccion")
+          .select("*", { count: "exact", head: true })
+          .eq("sub_item_id", id);
+        if (errCount2) throw errCount2;
+        console.log(`[delSub] detalles_inspeccion DESPUÉS de borrar: ${afterCount ?? 0}`);
+
+        if ((afterCount ?? 0) > 0) {
+          throw new Error(
+            `No se pudieron borrar ${afterCount} registros de detalles_inspeccion (probablemente RLS).\n` +
+            `Solución: abrí el SQL Editor en Supabase y corré:\n` +
+            `ALTER TABLE detalles_inspeccion DROP CONSTRAINT detalles_inspeccion_sub_item_id_fkey;\n` +
+            `ALTER TABLE detalles_inspeccion ADD CONSTRAINT detalles_inspeccion_sub_item_id_fkey FOREIGN KEY (sub_item_id) REFERENCES sub_items(id) ON DELETE CASCADE;`
+          );
+        }
+      }
+
+      const { data: maestras, error: errMaes } = await supabase
+        .from("sub_item_maestras")
+        .select("storage_path")
+        .eq("sub_item_id", id);
+      if (errMaes) throw errMaes;
+      if (maestras && maestras.length > 0) {
+        const paths = maestras.map((m) => m.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from("evidencias").remove(paths);
+        }
+      }
+      const { error: errDelMaes } = await supabase.from("sub_item_maestras").delete().eq("sub_item_id", id);
+      if (errDelMaes) throw errDelMaes;
+      const { error } = await supabase.from("sub_items").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Ítem eliminado correctamente");
+    } catch (e: unknown) {
+      const { msg, isAuth } = extraerMensaje(e);
+      if (isAuth) {
+        toast.error("Sesión expirada — volvé a iniciar sesión");
+        await signOut();
+        return;
+      }
+      return toast.error(msg);
+    }
+    reload();
+  };
+
+  const subirMaestra = async (subId: string, file: File) => {
+    if (!user) return;
+    const current = maestrasBySub[subId] ?? [];
+    if (current.length >= 4) return toast.error("Máximo 4 fotos originales por ítem");
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/maestras/${subId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("evidencias").upload(path, file, { upsert: true });
+    if (error) return toast.error(error.message);
+    const { data: signed } = await supabase.storage.from("evidencias").createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
+    if (!signed) return;
+    const { data: saved, error: insErr } = await supabase
+      .from("sub_item_maestras")
+      .insert({ sub_item_id: subId, storage_path: path, url: signed.signedUrl })
+      .select("id, sub_item_id, url, storage_path")
+      .single();
+    if (insErr) {
+      await supabase.storage.from("evidencias").remove([path]);
+      return toast.error(insErr.message);
+    }
+    const savedFoto: MaestraFoto = {
+      id: saved!.id,
+      sub_item_id: saved!.sub_item_id,
+      url: saved!.url,
+      storage_path: saved!.storage_path,
+      source: "table",
+    };
+    setMaestrasBySub((prev) => ({
+      ...prev,
+      [subId]: [...(prev[subId] ?? []), savedFoto],
+    }));
+    toast.success("Foto original agregada");
+  };
+
+  const eliminarMaestra = async (foto: MaestraFoto) => {
+    if (!user || !isAdmin) {
+      return toast.error("Solo los administradores pueden eliminar fotos");
+    }
+    if (foto.source === "legacy") {
+      const { error } = await supabase.from("sub_items").update({ foto_maestra_url: null }).eq("id", foto.sub_item_id);
+      if (error) return toast.error(error.message);
+    } else {
+      const { error } = await supabase.from("sub_item_maestras").delete().eq("id", foto.id);
+      if (error) return toast.error(error.message);
+    }
+    if (foto.storage_path) {
+      await supabase.storage.from("evidencias").remove([foto.storage_path]);
+    }
+    setMaestrasBySub((prev) => ({
+      ...prev,
+      [foto.sub_item_id]: (prev[foto.sub_item_id] ?? []).filter((m) => m.id !== foto.id),
+    }));
+    toast.success("Foto original eliminada");
+  };
+
+  const abrirFotoModal = (url: string) => {
+    setFotoModal({ url, rotation: 0, zoom: 1 });
+  };
+
+  const cerrarFotoModal = () => {
+    setFotoModal(null);
+  };
+
+  const rotarFoto = () => {
+    if (fotoModal) {
+      setFotoModal({ ...fotoModal, rotation: (fotoModal.rotation + 90) % 360 });
+    }
+  };
+
+  const zoomIn = () => {
+    if (fotoModal && fotoModal.zoom < 3) {
+      setFotoModal({ ...fotoModal, zoom: fotoModal.zoom + 0.5 });
+    }
+  };
+
+  const zoomOut = () => {
+    if (fotoModal && fotoModal.zoom > 0.5) {
+      setFotoModal({ ...fotoModal, zoom: fotoModal.zoom - 0.5 });
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+
+  return (
+    <AppShell>
+      <header className="mb-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-primary mb-2 font-semibold">Configuración</p>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          Sectores y sub-ítems
+        </h1>
+        <p className="text-muted-foreground mt-2">Editá las áreas a auditar y subí fotos maestras (estado ideal) para usar la comparación con IA.</p>
+      </header>
+
+      <div className="space-y-4">
+        {sectores.map((s) => (
+          <Card key={s.id} className="p-5 bg-gradient-surface border-border/50 shadow-card">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              <span className="text-2xl">{s.emoji}</span>{s.nombre}
+            </h2>
+            <div className="space-y-2 mb-4">
+              {(subsBySec[s.id] ?? []).map((sub) => (
+                <div key={sub.id} className="flex items-center gap-2 p-3 rounded-lg bg-muted/30">
+                  <span className="flex-1 text-sm font-medium truncate">{sub.nombre}</span>
+                  <div className="flex items-center gap-1">
+                    {(maestrasBySub[sub.id] ?? []).slice(0, 4).map((m) => (
+                      <div key={m.id} className="relative h-9 w-9 rounded overflow-hidden border border-border/50 cursor-pointer group">
+                        <img
+                          src={m.url}
+                          className="h-9 w-9 object-cover"
+                          alt="maestra"
+                          onClick={() => abrirFotoModal(m.url)}
+                        />
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); eliminarMaestra(m); }}
+                            className="absolute inset-0 bg-background/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                            aria-label="Eliminar foto original"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {!((maestrasBySub[sub.id] ?? []).length) && (
+                      <div className="h-9 w-9 rounded bg-muted flex items-center justify-center">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <label className={`cursor-pointer ${((maestrasBySub[sub.id] ?? []).length >= 4) ? "opacity-50 pointer-events-none" : ""}`}>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) subirMaestra(sub.id, f); }} />
+                      <span className="inline-flex items-center justify-center h-8 w-8 rounded hover:bg-muted text-muted-foreground"><Camera className="h-4 w-4" /></span>
+                    </label>
+                  )}
+                  {isAdmin && (
+                    <button onClick={() => delSub(sub.id)} className="h-8 w-8 rounded hover:bg-destructive/10 text-destructive flex items-center justify-center">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Input placeholder="Nuevo sub-ítem (ej. Estantería C)"
+                  value={nuevo[s.id] ?? ""} onChange={(e) => setNuevo({ ...nuevo, [s.id]: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && addSub(s.id)} />
+                <Button variant="hero" onClick={() => addSub(s.id)}><Plus className="h-4 w-4" />Agregar</Button>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+
+      {/* Modal para ver foto completa con zoom */}
+      {fotoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="relative max-w-5xl max-h-[90vh] w-full flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Foto maestra</h3>
+              <button
+                onClick={cerrarFotoModal}
+                className="text-white hover:text-gray-300 transition"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-lg bg-black/50 flex items-center justify-center relative">
+              <img
+                src={fotoModal.url}
+                alt="Foto maestra completa"
+                className="max-w-full max-h-[70vh] object-contain transition-transform duration-200"
+                style={{
+                  transform: `scale(${fotoModal.zoom}) rotate(${fotoModal.rotation}deg)`,
+                }}
+              />
+            </div>
+            <div className="flex justify-center gap-4 mt-4">
+              <button
+                onClick={zoomOut}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                disabled={fotoModal.zoom <= 0.5}
+              >
+                <ZoomOut className="h-4 w-4" />
+                <span>Zoom -</span>
+              </button>
+              <span className="text-white flex items-center">
+                {Math.round(fotoModal.zoom * 100)}%
+              </span>
+              <button
+                onClick={zoomIn}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+                disabled={fotoModal.zoom >= 3}
+              >
+                <ZoomIn className="h-4 w-4" />
+                <span>Zoom +</span>
+              </button>
+              <button
+                onClick={rotarFoto}
+                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+              >
+                <RotateCw className="h-4 w-4" />
+                <span>Rotar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AppShell>
+  );
+}
