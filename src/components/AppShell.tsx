@@ -73,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {modoDiario ? "Modo nocturno" : "Modo diario"}
           </button>
           {user ? (
-            <button onClick={async () => { await supabase.auth.signOut(); nav("/auth"); }}
+            <button onClick={async () => { await supabase.auth.signOut(); nav("/"); }}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition">
               <LogOut className="h-4 w-4" />Salir
             </button>
@@ -115,7 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {modoDiario ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
           {user ? (
-            <button onClick={async () => { await supabase.auth.signOut(); nav("/auth"); }}
+            <button onClick={async () => { await supabase.auth.signOut(); nav("/"); }}
               className="text-xs text-muted-foreground flex items-center gap-1">
               <LogOut className="h-3.5 w-3.5" />Salir
             </button>
