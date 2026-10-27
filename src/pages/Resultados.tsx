@@ -156,11 +156,13 @@ export default function Resultados() {
   const scoreOf = (d: DetalleRow, key: ScoreKey) => d[key];
 
   const fetchDetalles = async (inspectionIds: string[]) => {
+    if (!inspectionIds.length) return [];
     const chunkSize = 200;
     const rows: DetalleRow[] = [];
     for (let i = 0; i < inspectionIds.length; i += chunkSize) {
       const chunk = inspectionIds.slice(i, i + chunkSize);
       const fromTable = (user ? "detalles_inspeccion" : "detalles_publicos") as any;
+      console.log(`Fetching detalles from ${fromTable} for inspections:`, chunk);
       const { data, error } = await supabase
         .from(fromTable)
         .select("inspeccion_id,sub_item_nombre,promedio,s1_puntaje,s2_puntaje,s3_puntaje,s4_puntaje,s5_puntaje")
@@ -172,10 +174,12 @@ export default function Resultados() {
       }
       if (!data || data.length === 0) {
         console.warn(`No detalles found for inspection IDs: ${chunk.join(", ")}`);
+      } else {
+        console.log(`Fetched ${data.length} detalle rows for chunk`);
       }
       rows.push(...((data ?? []) as unknown as DetalleRow[]));
     }
-    console.log(`Fetched ${rows.length} detalle rows for ${inspectionIds.length} inspections`);
+    console.log(`Total fetched: ${rows.length} detalle rows for ${inspectionIds.length} inspections`);
     return rows;
   };
 
