@@ -164,10 +164,18 @@ export default function Resultados() {
       const { data, error } = await supabase
         .from(fromTable)
         .select("inspeccion_id,sub_item_nombre,promedio,s1_puntaje,s2_puntaje,s3_puntaje,s4_puntaje,s5_puntaje")
-        .in("inspeccion_id", chunk);
-      if (error) throw error;
+        .in("inspeccion_id", chunk)
+        .order("sub_item_nombre");
+      if (error) {
+        console.error("Error fetching detalles:", error);
+        throw error;
+      }
+      if (!data || data.length === 0) {
+        console.warn(`No detalles found for inspection IDs: ${chunk.join(", ")}`);
+      }
       rows.push(...((data ?? []) as unknown as DetalleRow[]));
     }
+    console.log(`Fetched ${rows.length} detalle rows for ${inspectionIds.length} inspections`);
     return rows;
   };
 
@@ -467,7 +475,11 @@ export default function Resultados() {
       a.s += v;
       a.c += 1;
     };
-    const avg = (a: Agg) => (a.c ? Math.round((a.s / a.c) * 10) / 10 : 0);
+    const avg = (a: Agg) => {
+      if (a.c === 0) return 0;
+      // Calculate average based on completed criteria only (meaningful partial scores)
+      return Math.round((a.s / a.c) * 10) / 10;
+    };
 
     detallesDelPeriodo.forEach((d) => {
       const sectorId = inspToSector.get(d.inspeccion_id);

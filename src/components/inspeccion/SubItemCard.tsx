@@ -93,11 +93,26 @@ export function SubItemCard({ detalle, fotosMaestras, fotosEvidencia, inspeccion
     };
     const { data: saved, error } = await supabase.from("detalles_inspeccion")
       .upsert(payload, { onConflict: "inspeccion_id,sub_item_id" })
-      .select("id, promedio").single();
+      .select("*").single();
     setSaving(false);
     if (error) { toast.error(error.message); return; }
-    onChange({ ...data, id: saved.id, promedio: Number(saved.promedio) });
-    toast.success("Guardado");
+    // Update the state with the saved data including the calculated promedio from the database
+    onChange({
+      ...data,
+      id: saved.id,
+      promedio: Number(saved.promedio),
+      s1_puntaje: saved.s1_puntaje,
+      s2_puntaje: saved.s2_puntaje,
+      s3_puntaje: saved.s3_puntaje,
+      s4_puntaje: saved.s4_puntaje,
+      s5_puntaje: saved.s5_puntaje,
+    });
+    const completedCount = CINCO_S.filter((s) => data[s.key] != null).length;
+    if (completedCount < 5) {
+      toast.success(`Guardado (${completedCount}/5 completos)`);
+    } else {
+      toast.success("Guardado ✓");
+    }
   };
 
   const subirFoto = async (file: File, prefijo: string = "") => {
