@@ -467,7 +467,10 @@ export default function Resultados() {
 
   const detallePorSector = useMemo<Sector5S[]>(() => {
     const inspIdsFiltradas = new Set(filtradas.map((i) => i.id));
+    console.log("Filtradas inspecciones:", filtradas.length, "IDs:", Array.from(inspIdsFiltradas));
+    console.log("Detalles cargados:", detallesCargados.length);
     const detallesDelPeriodo = detallesCargados.filter((d) => inspIdsFiltradas.has(d.inspeccion_id));
+    console.log("Detalles del periodo (filtrados):", detallesDelPeriodo.length);
     const inspToSector = new Map<string, string>();
     filtradas.forEach((i) => inspToSector.set(i.id, i.sector_id));
 
