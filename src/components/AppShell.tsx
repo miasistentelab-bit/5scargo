@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {user && (
             <div className="px-3 text-xs">
               <div className="text-muted-foreground">Auditor</div>
-              <div className="font-medium truncate">Auditoria Mensual</div>
+              <div className="font-medium truncate">Oficinas y SSGG</div>
             </div>
           )}
           <button

@@ -279,7 +279,7 @@ export default function Resultados() {
       const { jsPDF } = await import("jspdf");
       await import("jspdf-autotable");
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" }) as any;
-      const title = "Reporte de inspecciones 5S";
+      const title = "Reporte de auditorías 5S";
       const range = `${monthLabel(desde.mes, desde.anio)} → ${monthLabel(hasta.mes, hasta.anio)}`;
 
       const drawLineChart = (x: number, y: number, w: number, h: number) => {
@@ -346,7 +346,7 @@ export default function Resultados() {
       doc.setFontSize(11);
       doc.text(range, 40, 60);
       doc.setFontSize(12);
-      doc.text(`Inspecciones en período: ${filtradas.length}`, 40, 78);
+      doc.text(`Auditorías en período: ${filtradas.length}`, 40, 78);
       doc.text(`Promedio general: ${promedioGeneral.toFixed(1)}%`, 260, 78);
 
       doc.setFontSize(11);
@@ -607,7 +607,7 @@ export default function Resultados() {
           <ProgressBar value={promedioGeneral} showLabel={false} />
         </Card>
         <Card className="p-5 bg-gradient-surface border-border/50 shadow-card">
-          <p className="text-xs text-muted-foreground mb-1">Inspecciones en período</p>
+          <p className="text-xs text-muted-foreground mb-1">Auditorías en período</p>
           <p className="text-4xl font-bold tabular-nums" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{filtradas.length}</p>
         </Card>
         <Card className="p-5 bg-gradient-surface border-border/50 shadow-card">
@@ -735,7 +735,7 @@ export default function Resultados() {
 
       <Card className="bg-gradient-surface border-border/50 shadow-card overflow-hidden">
         <div className="p-5 border-b border-border/50">
-          <h2 className="font-semibold flex items-center gap-2"><FileCheck2 className="h-4 w-4 text-primary" />Detalle de inspecciones</h2>
+          <h2 className="font-semibold flex items-center gap-2"><FileCheck2 className="h-4 w-4 text-primary" />Detalle de auditorías</h2>
         </div>
         <div className="divide-y divide-border/50">
           {filtradas.length === 0 && <p className="p-8 text-center text-muted-foreground text-sm">Sin inspecciones en este período.</p>}

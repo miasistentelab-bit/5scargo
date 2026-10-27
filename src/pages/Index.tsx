@@ -27,7 +27,7 @@ export default function Index() {
   const [responsable, setResponsable] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => { setResponsable(nombre || "Auditoria Mensual"); }, [nombre]);
+  useEffect(() => { setResponsable(nombre || "Oficinas y SSGG"); }, [nombre]);
 
   useEffect(() => {
     if (!user) return;
@@ -52,7 +52,7 @@ export default function Index() {
     const maxKey = now.getFullYear() * 100 + (now.getMonth() + 1);
     const selKey = anio * 100 + mes;
     if (selKey > maxKey) return toast.error("No se puede iniciar una inspección en un mes futuro");
-    const nombreFinal = responsable.trim() || "Auditoria Mensual";
+    const nombreFinal = responsable.trim() || "Oficinas y SSGG";
     setBusy(sector.id);
     // Re-confirm the active session right before insert to avoid RLS race conditions
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -120,8 +120,8 @@ export default function Index() {
     <AppShell>
       <header className="mb-8">
         <p className="text-xs uppercase tracking-[0.2em] text-primary mb-2 font-semibold">Auditoría 5S · {meses()[mes - 1]} {anio}</p>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-balance" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-          Inspección mensual
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-balance" style={{ fontFamily: "'Space Grotesk', sans-serif" }}">
+          Auditoría Mensual
         </h1>
         <p className="text-muted-foreground mt-2 max-w-xl">
           Seleccioná el sector que vas a auditar. Cada inspección se bloquea al finalizar para garantizar la integridad ante auditores.
@@ -132,7 +132,7 @@ export default function Index() {
         <div className="grid md:grid-cols-3 gap-4">
           <div>
             <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Auditor</Label>
-            <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Auditoria Mensual" />
+            <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Oficinas y SSGG" />
           </div>
           <div>
             <Label className="text-xs flex items-center gap-1.5 mb-1.5"><Calendar className="h-3 w-3" />Mes</Label>
@@ -179,7 +179,7 @@ export default function Index() {
                   {s.nombre}
                 </h3>
                 <p className="text-xs text-muted-foreground mb-4">
-                  {finalizada ? "Inspección finalizada" : insp ? "En curso · borrador" : "Sin iniciar"}
+                  {finalizada ? "Auditoría finalizada" : insp ? "En curso · borrador" : "Sin iniciar"}
                 </p>
                 {insp && (
                   <div className="mb-4">

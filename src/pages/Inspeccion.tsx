@@ -62,7 +62,7 @@ export default function Inspeccion() {
     if (!id || !user) return;
     (async () => {
       const { data: i } = await supabase.from("inspecciones").select("*").eq("id", id).maybeSingle();
-      if (!i) { toast.error("Inspección no encontrada"); navigate("/"); return; }
+      if (!i) { toast.error("Auditoría no encontrada"); navigate("/"); return; }
       const inspRow = i as unknown as InspeccionRow;
       setInsp(inspRow);
       const { data: s } = await supabase.from("sectores").select("*").eq("id", inspRow.sector_id).maybeSingle();
@@ -168,7 +168,7 @@ export default function Inspeccion() {
     }).eq("id", insp.id);
     setFinalizando(false);
     if (error) return toast.error(error.message);
-    toast.success("Inspección finalizada y bloqueada para auditoría");
+    toast.success("Auditoría finalizada y bloqueada para auditoría");
     navigate("/resultados");
   };
 
