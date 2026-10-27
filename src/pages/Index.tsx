@@ -27,7 +27,7 @@ export default function Index() {
   const [responsable, setResponsable] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
 
-  useEffect(() => { setResponsable(nombre); }, [nombre]);
+  useEffect(() => { setResponsable(nombre || "Auditoria Mensual"); }, [nombre]);
 
   useEffect(() => {
     if (!user) return;
@@ -52,7 +52,7 @@ export default function Index() {
     const maxKey = now.getFullYear() * 100 + (now.getMonth() + 1);
     const selKey = anio * 100 + mes;
     if (selKey > maxKey) return toast.error("No se puede iniciar una inspección en un mes futuro");
-    if (!responsable.trim()) return toast.error("Ingresá el nombre del inspector");
+    const nombreFinal = responsable.trim() || "Auditoria Mensual";
     setBusy(sector.id);
     // Re-confirm the active session right before insert to avoid RLS race conditions
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -62,9 +62,9 @@ export default function Index() {
       navigate("/auth");
       return;
     }
-    if (responsable !== nombre) {
-      await supabase.from("profiles").update({ nombre: responsable }).eq("id", authUser.id);
-      setNombre(responsable);
+    if (nombreFinal !== nombre) {
+      await supabase.from("profiles").update({ nombre: nombreFinal }).eq("id", authUser.id);
+      setNombre(nombreFinal);
     }
     const existente = inspBySector.get(sector.id);
     if (existente) {
@@ -73,7 +73,7 @@ export default function Index() {
       return;
     }
     const { data, error } = await supabase.from("inspecciones").insert({
-      user_id: authUser.id, responsable, sector_id: sector.id, mes, anio,
+      user_id: authUser.id, responsable: nombreFinal, sector_id: sector.id, mes, anio,
     }).select("id").single();
     setBusy(null);
     if (error) return toast.error(error.message);
@@ -132,7 +132,7 @@ export default function Index() {
         <div className="grid md:grid-cols-3 gap-4">
           <div>
             <Label className="text-xs flex items-center gap-1.5 mb-1.5"><UserIcon className="h-3 w-3" />Auditor</Label>
-            <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Tu nombre" />
+            <Input value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Auditoria Mensual" />
           </div>
           <div>
             <Label className="text-xs flex items-center gap-1.5 mb-1.5"><Calendar className="h-3 w-3" />Mes</Label>
