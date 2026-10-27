@@ -120,11 +120,11 @@ export default function Index() {
     <AppShell>
       <header className="mb-8">
         <p className="text-xs uppercase tracking-[0.2em] text-primary mb-2 font-semibold">Auditoría 5S · {meses()[mes - 1]} {anio}</p>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-balance" style={{ fontFamily: "'Space Grotesk', sans-serif" }}">
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-balance" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
           Auditoría Mensual
         </h1>
         <p className="text-muted-foreground mt-2 max-w-xl">
-          Seleccioná el sector que vas a auditar. Cada inspección se bloquea al finalizar para garantizar la integridad ante auditores.
+          Seleccioná el sector que vas a auditar. Cada auditoría se bloquea al finalizar para garantizar la integridad ante auditores.
         </p>
       </header>
 
